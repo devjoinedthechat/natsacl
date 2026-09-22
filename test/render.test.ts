@@ -12,6 +12,20 @@ describe('renderers', () => {
     expect(render(model, config, 'server')).toBe(golden);
   });
 
+  it('an nkey user carries no password reference', () => {
+    const nkey = 'U' + 'A'.repeat(55);
+    const { model: m, config: c } = modelFor('basic', {
+      services: [
+        { name: 'ingest', entry: 'src/ingest/main.ts', nkey },
+        { name: 'alerts', entry: 'src/alerts/main.ts', passwordEnv: 'ALERTS_SECRET' },
+      ],
+    });
+    const out = render(m, c, 'server');
+    expect(out).toContain(`nkey: "${nkey}"`);
+    expect(out).not.toContain('user: "ingest"');
+    expect(out).toContain('password: $ALERTS_SECRET');
+  });
+
   it('server conf can be wrapped in an account', () => {
     const { model: m, config: c } = modelFor('basic', { output: { account: 'APP' } });
     const out = render(m, c, 'server');

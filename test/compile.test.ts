@@ -71,6 +71,8 @@ describe('basic fixture: two services sharing a library', () => {
       '$JS.API.CONSUMER.MSG.NEXT.TELEMETRY.*',
       '$JS.API.INFO',
       '$JS.API.STREAM.INFO.TELEMETRY',
+      '$JS.API.STREAM.LIST',
+      '$JS.API.STREAM.NAMES',
       'INCIDENTS.closed',
       'INCIDENTS.opened',
     ]);
@@ -212,6 +214,13 @@ describe('basic fixture: two services sharing a library', () => {
     const { model: m } = modelFor('basic', { streams: undefined });
     expect(user(m, 'alerts').permissions.publishAllow).toContain('$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-incidents.INCIDENTS.>');
     expect(codes(m, 'warning')).not.toContain('stream-unknown');
+  });
+});
+
+describe('references fixture: a solution-style tsconfig', () => {
+  it('loads the files of referenced projects', () => {
+    const { model } = modelFor('references');
+    expect(user(model, 'app').permissions.publishAllow).toEqual(['REF.ok']);
   });
 });
 

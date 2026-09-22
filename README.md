@@ -44,6 +44,7 @@ It closes a second, subtler gap. JetStream does not enforce subscribe permission
 - **JetStream done properly.** Consumer grants scoped to the filter and, when the code names it, the durable; stream inference from provisioned streams; a stream named in code is verified to exist and to carry the filter.
 - **Five outputs.** `nats-server` config, `nsc` script, JWT permission JSON, a JSON model with provenance, a Markdown review.
 - **Every grant is explainable.** `natsacl explain <user> <subject>` prints the call sites and the chain of declarations behind it.
+- **Verified against a real broker.** The test suite loads the generated permissions into `nats-server` and proves the allows and the denies with the official client.
 - **Zero runtime dependencies** beyond your own `typescript`.
 
 ## Install
@@ -146,6 +147,7 @@ this.nc.publish(buildLegacySubject(), payload);
 | stream named in code | verified to exist and to carry the filter; otherwise an error and no grant | |
 | durable not a literal | `*` for the consumer token, reported as `consumer-wide-grant` | |
 | unnamed (ephemeral / ordered) consumer | `*` for the consumer token, plus `CONSUMER.DELETE` | |
+| `jsm.streams.info('S')`, `streams.list()`, `streams.names()`, `getAccountInfo()` | `$JS.API.STREAM.INFO.S`, or `$JS.API.STREAM.LIST` and `$JS.API.STREAM.NAMES`; `$JS.API.INFO` | `_INBOX.>` |
 | `jsm.streams.add(…)` inside a service | **nothing** — reported as `stream-admin-in-service`; streams are provisioned by the `admin` user | |
 
 Set `jetstream.api: "legacy"` to also grant `$JS.API.CONSUMER.DURABLE.CREATE` for servers before 2.9.
@@ -156,8 +158,8 @@ Set `jetstream.api: "legacy"` to also grant `$JS.API.CONSUMER.DURABLE.CREATE` fo
 
 | Key | Meaning | Default |
 |---|---|---|
-| `tsconfig` | The program to analyse | `tsconfig.json` |
-| `services[]` | `{ name, entry, user?, tsconfig?, inboxPrefix?, extraPublish?, extraSubscribe?, denyPublish?, denySubscribe? }` | single service |
+| `tsconfig` | The program to analyse; a solution-style root with `references` loads every referenced project | `tsconfig.json` |
+| `services[]` | `{ name, entry, user?, passwordEnv?, nkey?, tsconfig?, inboxPrefix?, extraPublish?, extraSubscribe?, denyPublish?, denySubscribe? }`; an `nkey` user is rendered without a password | single service |
 | `userTemplate`, `passwordEnvTemplate` | `${service}` / `${SERVICE}` expand to the name | `${service}`, `${SERVICE}_NATS_PASSWORD` |
 | `shapes.extend[]` | Your wrappers: `{ kind, callee, receiverTypes?, subject?, stream?, durable?, mode? }` | built-in table |
 | `shapes.replace[]` | Drop the built-in table | |
@@ -308,6 +310,8 @@ npm run check      # typecheck, tests, build
 ```
 
 Tests run the compiler over fixture projects in `test/fixtures` and assert on the resulting grants, so a change to the evaluator shows up as a concrete permission difference. Add a fixture for any new resolution rule.
+
+When Docker is available, `npm test` also starts a real `nats-server` (`nats:2.10-alpine`) with the generated permissions and drives it with the official client: the fixture's users create their filtered consumers, publish, consume and ack, and are refused every operation their code does not perform. That test is what pins the JetStream API grant table to server and client behaviour rather than to documentation; it is skipped when Docker is absent.
 
 ## License
 

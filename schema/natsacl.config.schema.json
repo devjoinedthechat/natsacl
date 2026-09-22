@@ -17,6 +17,8 @@
         "properties": {
           "name": { "type": "string" },
           "user": { "type": "string", "description": "Broker user name; default: userTemplate applied to name." },
+          "passwordEnv": { "type": "string", "description": "Environment variable holding the password; default: passwordEnvTemplate applied to name." },
+          "nkey": { "type": "string", "pattern": "^U[A-Z2-7]{55}$", "description": "Public user nkey; the server config then carries an nkey entry instead of user/password." },
           "entry": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "Entry file(s); everything reachable through imports belongs to the service." },
           "tsconfig": { "type": "string" },
           "inboxPrefix": { "type": "string" },
@@ -114,7 +116,7 @@
       "additionalProperties": false,
       "required": ["kind", "callee"],
       "properties": {
-        "kind": { "enum": ["publish", "request", "respond", "subscribe", "js-publish", "js-subscribe", "js-consumer-add", "js-consumer-get", "js-consumer-info", "js-consumer-delete", "js-stream-admin", "service-endpoint"] },
+        "kind": { "enum": ["publish", "request", "respond", "subscribe", "js-publish", "js-subscribe", "js-consumer-add", "js-consumer-get", "js-consumer-info", "js-consumer-delete", "js-stream-admin", "js-stream-info", "service-endpoint"] },
         "callee": { "type": "string" },
         "receiverTypes": { "type": "array", "items": { "type": "string" }, "description": "Type names the receiver must be, extend or implement. Empty: a free function. Omitted: any receiver." },
         "subject": { "$ref": "#/definitions/argRef" },

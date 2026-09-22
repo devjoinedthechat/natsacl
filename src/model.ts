@@ -23,6 +23,7 @@ export type FactKind =
   | 'js-consumer-info'
   | 'js-consumer-delete'
   | 'js-stream-admin'
+  | 'js-stream-info'
   | 'service-endpoint';
 
 /** How a subject value was arrived at; the deriver reports `widened` and `override` in the output. */

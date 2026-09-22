@@ -99,6 +99,7 @@ export function render(model: Model, config: ResolvedConfig, format: OutputForma
         account: config.output.account,
         admin: config.admin,
         passwordEnvOf: (service) => config.services.find((s) => s.name === service)?.passwordEnv ?? `${service.toUpperCase()}_NATS_PASSWORD`,
+        nkeyOf: (service) => config.services.find((s) => s.name === service)?.nkey ?? null,
       });
     case 'nsc':
       return renderNsc(model, { account: config.output.account });

@@ -66,6 +66,12 @@ export const DEFAULT_SHAPES: readonly ShapeSpec[] = [
   { kind: 'js-stream-admin', callee: 'update', receiverTypes: ['StreamAPI'], stream: 0, subject: { arg: 1, path: 'subjects' } },
   { kind: 'js-stream-admin', callee: 'delete', receiverTypes: ['StreamAPI'], stream: 0 },
   { kind: 'js-stream-admin', callee: 'purge', receiverTypes: ['StreamAPI'], stream: 0 },
+  { kind: 'js-stream-info', callee: 'info', receiverTypes: ['StreamAPI'], stream: 0 },
+  { kind: 'js-stream-info', callee: 'get', receiverTypes: ['StreamAPI', 'Streams'], stream: 0 },
+  { kind: 'js-stream-info', callee: 'list', receiverTypes: ['StreamAPI'] },
+  { kind: 'js-stream-info', callee: 'names', receiverTypes: ['StreamAPI'] },
+  { kind: 'js-stream-info', callee: 'find', receiverTypes: ['StreamAPI'] },
+  { kind: 'js-stream-info', callee: 'getAccountInfo', receiverTypes: ['JetStreamManager'] },
 
   // ─── Services API ──────────────────────────────────────────────────────────
   { kind: 'service-endpoint', callee: 'addEndpoint', receiverTypes: ['Service', 'ServiceGroup'], subject: { arg: 1, path: 'subject' } },
@@ -115,6 +121,7 @@ const FACT_KINDS = new Set([
   'js-consumer-info',
   'js-consumer-delete',
   'js-stream-admin',
+  'js-stream-info',
   'service-endpoint',
 ]);
 

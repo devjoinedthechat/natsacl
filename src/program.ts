@@ -46,7 +46,8 @@ export function createProgramContext(tsconfigPath: string, extraRootFiles: reado
   if (fatal.length > 0) throw new ProgramError(fatal.map((e) => ts.flattenDiagnosticMessageText(e.messageText, '\n')).join('\n'));
 
   const options: ts.CompilerOptions = { ...parsed.options, noEmit: true, skipLibCheck: true };
-  const rootNames = [...new Set([...parsed.fileNames, ...extraRootFiles.map((f) => resolve(f))])];
+  const referenced = referencedFileNames(parsed, new Set([tsconfig]));
+  const rootNames = [...new Set([...parsed.fileNames, ...referenced, ...extraRootFiles.map((f) => resolve(f))])];
   const host = ts.createCompilerHost(options, true);
   const program = ts.createProgram({ rootNames, options, host });
   const checker = program.getTypeChecker();
@@ -110,6 +111,24 @@ export function createProgramContext(tsconfigPath: string, extraRootFiles: reado
   }
 
   return { program, checker, options, host, tsconfig, sourceFiles, callSites, subtypes, jsdocShapes, serviceNameDeclarations };
+}
+
+/**
+ * Files of every project the tsconfig references, recursively. A solution-style root
+ * (`"files": [], "references": [...]`) lists nothing itself, and the program would be empty.
+ */
+function referencedFileNames(parsed: ts.ParsedCommandLine, seen: Set<string>): string[] {
+  const out: string[] = [];
+  for (const ref of parsed.projectReferences ?? []) {
+    const path = ts.resolveProjectReferencePath(ref);
+    if (seen.has(path) || !existsSync(path)) continue;
+    seen.add(path);
+    const read = ts.readConfigFile(path, ts.sys.readFile);
+    if (read.error) continue;
+    const child = ts.parseJsonConfigFileContent(read.config, ts.sys, dirname(path), undefined, path);
+    out.push(...child.fileNames, ...referencedFileNames(child, seen));
+  }
+  return out;
 }
 
 function jsDocTagText(node: ts.Node): string | null {

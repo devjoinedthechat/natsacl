@@ -80,6 +80,11 @@ export function analyze(ctx: ProgramContext, config: ResolvedConfig): Analysis {
       return;
     }
 
+    if (shape.kind === 'js-stream-info') {
+      facts.push(fact(shape, NO_SUBJECT, location, [], 'literal', false, stream, undefined, false));
+      return;
+    }
+
     if (shape.subject === undefined) {
       facts.push(fact(shape, NO_SUBJECT, location, [], 'literal', false, stream, durable, namesConsumer));
       return;

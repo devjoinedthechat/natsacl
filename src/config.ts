@@ -34,6 +34,10 @@ export interface ServiceSpec {
   readonly name: string;
   /** Broker user name; defaults to `userTemplate` applied to `name`. */
   readonly user?: string;
+  /** Environment variable holding the password; defaults to `passwordEnvTemplate` applied to `name`. */
+  readonly passwordEnv?: string;
+  /** Public NKey (`U…`) for an nkey user; the server config then carries no password reference. */
+  readonly nkey?: string;
   /** Entry file(s); every file reachable through imports from here belongs to the service. */
   readonly entry: string | readonly string[];
   /** A service-specific tsconfig; defaults to the top-level one. */
@@ -95,6 +99,7 @@ export interface ResolvedService {
   readonly name: string;
   readonly user: string;
   readonly passwordEnv: string;
+  readonly nkey: string | null;
   readonly entries: readonly string[];
   readonly tsconfig: string;
   readonly inboxPrefix: string;
@@ -188,10 +193,12 @@ export function resolveConfig(raw: Config, options: { readonly rootDir: string; 
     seen.add(s.name);
     const entries = (typeof s.entry === 'string' ? [s.entry] : [...(s.entry ?? [])]).map(abs);
     if (entries.length === 0) throw new ConfigError(`services[${s.name}].entry is required`);
+    if (s.nkey !== undefined && !/^U[A-Z2-7]{55}$/.test(s.nkey)) throw new ConfigError(`services[${s.name}].nkey must be a public user nkey (U…, 56 characters)`);
     return {
       name: s.name,
       user: s.user ?? expand(userTemplate, s.name),
-      passwordEnv: expand(passwordEnvTemplate, s.name),
+      passwordEnv: s.passwordEnv ?? expand(passwordEnvTemplate, s.name),
+      nkey: s.nkey ?? null,
       entries,
       tsconfig: s.tsconfig ? abs(s.tsconfig) : tsconfig,
       inboxPrefix: s.inboxPrefix ?? inboxPrefix,
@@ -209,6 +216,7 @@ export function resolveConfig(raw: Config, options: { readonly rootDir: string; 
       name,
       user: expand(userTemplate, name),
       passwordEnv: expand(passwordEnvTemplate, name),
+      nkey: null,
       entries: [],
       tsconfig,
       inboxPrefix,

@@ -11,6 +11,7 @@ export class IncidentWriter {
     await this.jsm.consumers.add('TELEMETRY', { durable_name: 'alerts-incidents', filter_subject: 'INCIDENTS.>' });
     const consumer = await this.js.consumers.get('TELEMETRY', 'alerts-incidents');
     void consumer;
+    void (await this.jsm.streams.list().next());
   }
 
   async write(kind: IncidentKind): Promise<void> {

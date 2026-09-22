@@ -4,6 +4,8 @@ export interface ServerConfOptions {
   readonly account: string | null;
   readonly admin: { readonly user: string; readonly passwordEnv: string } | null;
   readonly passwordEnvOf: (service: string) => string;
+  /** Public nkey per service, for nkey users; those users carry no password reference. */
+  readonly nkeyOf?: (service: string) => string | null;
 }
 
 /**
@@ -28,7 +30,7 @@ export function renderServerConf(model: Model, options: ServerConfOptions): stri
     lines.push('  users: [');
   }
   const userIndent = indent + '  ';
-  for (const s of model.services) lines.push(...renderUser(s, options.passwordEnvOf(s.service), userIndent));
+  for (const s of model.services) lines.push(...renderUser(s, options.passwordEnvOf(s.service), options.nkeyOf?.(s.service) ?? null, userIndent));
   if (options.admin) {
     lines.push(`${userIndent}{`);
     lines.push(`${userIndent}  user: "${options.admin.user}"`);
@@ -47,7 +49,7 @@ export function renderServerConf(model: Model, options: ServerConfOptions): stri
   return lines.join('\n') + '\n';
 }
 
-function renderUser(s: ServicePermissions, passwordEnv: string, indent: string): string[] {
+function renderUser(s: ServicePermissions, passwordEnv: string, nkey: string | null, indent: string): string[] {
   const p = s.permissions;
   const lines: string[] = [];
   const list = (name: string, values: readonly string[], depth: string): string[] => {
@@ -58,8 +60,11 @@ function renderUser(s: ServicePermissions, passwordEnv: string, indent: string):
     return out;
   };
   lines.push(`${indent}{`);
-  lines.push(`${indent}  user: ${quote(s.user)}`);
-  lines.push(`${indent}  password: $${passwordEnv}`);
+  if (nkey) lines.push(`${indent}  nkey: ${quote(nkey)}`);
+  else {
+    lines.push(`${indent}  user: ${quote(s.user)}`);
+    lines.push(`${indent}  password: $${passwordEnv}`);
+  }
   lines.push(`${indent}  permissions: {`);
   const pubDepth = `${indent}      `;
   const pub = [...list('allow', p.publishAllow, pubDepth), ...list('deny', p.publishDeny, pubDepth)];

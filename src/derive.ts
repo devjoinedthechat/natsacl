@@ -102,6 +102,12 @@ function buildPermissions(
         break;
       case 'js-stream-admin':
         break;
+      case 'js-stream-info':
+        jetstreamUsed = true;
+        subscribe.add(inbox, prov);
+        publish.add(fact.stream ? `$JS.API.STREAM.INFO.${fact.stream}` : '$JS.API.STREAM.LIST', prov);
+        if (!fact.stream) publish.add('$JS.API.STREAM.NAMES', prov);
+        break;
       default: {
         if (!CONSUMING_KINDS.has(fact.kind)) break;
         jetstreamUsed = true;
