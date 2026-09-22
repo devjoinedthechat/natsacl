@@ -1,32 +1,50 @@
-# natsacl
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" width="520" alt="natsacl">
+  </picture>
+</p>
 
-**Least-privilege NATS permissions, compiled from your TypeScript.**
+<p align="center">
+  <b>Least-privilege NATS permissions, compiled from your TypeScript.</b><br>
+  One broker user per service, with exactly the subjects its code touches — and a CI gate that fails when the two drift apart.
+</p>
 
-`natsacl` reads the code that publishes, requests, subscribes and consumes, and emits one broker user per service with exactly the subjects that code touches — as a `nats-server` config block, an `nsc` script, or JWT permission JSON. A CI gate fails the build when the checked-in permissions drift from what the code implies, and a coverage check fails it when a JetStream consumer's filter subject falls outside every provisioned stream.
+<p align="center">
+  <a href="https://github.com/devjoinedthechat/natsacl/actions/workflows/ci.yml"><img src="https://github.com/devjoinedthechat/natsacl/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-0f766e" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A5%2020-0f766e" alt="node >= 20">
+  <img src="https://img.shields.io/badge/typescript-%E2%89%A5%205-0f766e" alt="typescript >= 5">
+  <img src="https://img.shields.io/badge/runtime%20deps-none-0f766e" alt="no runtime dependencies">
+</p>
 
-```
-$ natsacl compile
-wrote nats/auth.conf (server, 2 user(s))
-
-$ natsacl explain alerts-svc INCIDENTS.opened
-alerts-svc may publish INCIDENTS.opened via "INCIDENTS.opened"
-  js-publish "INCIDENTS.opened" at src/alerts/incidents.ts:19:11 [type]
-alerts-svc may NOT subscribe INCIDENTS.opened
-```
-
-[![ci](https://github.com/devjoinedthechat/natsacl/actions/workflows/ci.yml/badge.svg)](https://github.com/devjoinedthechat/natsacl/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/natsacl)](https://www.npmjs.com/package/natsacl)
-[![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+<p align="center">
+  <img src="assets/demo.svg" width="780" alt="natsacl compile writes the permissions file, check confirms it matches the code, explain traces a grant to the call site">
+</p>
 
 ---
+
+**Contents** · [Why](#why) · [Highlights](#highlights) · [Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [What a consumer needs](#what-a-consumer-needs) · [Configuration](#configuration) · [Your own wrappers](#declaring-your-own-wrappers) · [Output formats](#output-formats) · [CLI](#cli) · [Diagnostics](#diagnostics) · [CI](#ci) · [Validation](#validation-on-a-real-codebase) · [Comparison](#comparison) · [Limits](#limits-stated-plainly) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 ## Why
 
 A shared NATS credential lets any pod publish any subject. One compromised or merely buggy service can forge another service's events, drain a command bus, or delete a stream. NATS has fine-grained permissions to prevent that — but they are hand-written, so they drift from the code within weeks, and the first symptom of drift is a permissions violation on a live message.
 
-There is no tooling that derives those permissions from the code. `nsc`, the Terraform provider and the control planes all manage credentials you author by hand; IAM policy generators observe traffic instead of reading source. `natsacl` closes that gap for TypeScript: the permission file becomes a build artifact, and the diff between it and the code becomes a CI failure.
+No existing tooling derives those permissions from the code. `nsc`, the Terraform provider and the control planes manage credentials a human authors; IAM policy generators observe traffic instead of reading source. `natsacl` closes that gap for TypeScript: the permissions file becomes a build artifact, and the difference between it and the code becomes a CI failure.
 
-The second thing it closes is subtler. JetStream does not enforce subscribe permissions on consumer filters ([nats-server#3202](https://github.com/nats-io/nats-server/issues/3202)); the only boundary is the consumer-creation API subject, which embeds the filter. `natsacl` scopes every `$JS.API.CONSUMER.CREATE` grant to the exact filter the code subscribes with, and checks that filter against the streams you provision — because a filter outside a stream's subjects is rejected at consumer creation, usually inside a caught handler, leaving a healthy-looking service with a dead subscriber.
+It closes a second, subtler gap. JetStream does not enforce subscribe permissions on consumer filters ([nats-server#3202](https://github.com/nats-io/nats-server/issues/3202)); the only boundary is the consumer-creation API subject, which embeds the filter. `natsacl` scopes every `$JS.API.CONSUMER.CREATE` grant to the exact filter the code subscribes with, and checks that filter against the streams you provision — because a filter outside a stream's subjects is rejected at consumer creation, usually inside a caught handler, leaving a healthy-looking service with a dead subscriber.
+
+## Highlights
+
+- **Real program analysis.** Loads your project with the TypeScript type checker, so barrels, aliases, overloads, interfaces and class hierarchies resolve the way `tsc` resolves them.
+- **Follows the subject wherever it goes.** Constants across modules, enums, `as const` objects, templates, `join`, ternaries, string-literal union types, functions that return subjects, factory-built objects, records indexed by a dynamic key, and pure string transforms over a finite set.
+- **Wrappers need no configuration.** A parameter that carries a subject is evaluated at every call site of the wrapper, including calls through the interfaces and base classes it implements. An abstract `subject` property is evaluated at every subclass that initialises it.
+- **Per-service attribution by reachability.** A fact belongs to a service when the file performing the call, and every file its value travelled through, is reachable from that service's entry. A shared base class is granted only to the services whose subclasses use it.
+- **Never over-grants.** A dynamic token becomes `*`, never `>`. A dynamic fragment inside a token is an error with the fix named. A subject with no literal part is refused.
+- **JetStream done properly.** Consumer grants scoped to the filter and, when the code names it, the durable; stream inference from provisioned streams; a stream named in code is verified to exist and to carry the filter.
+- **Five outputs.** `nats-server` config, `nsc` script, JWT permission JSON, a JSON model with provenance, a Markdown review.
+- **Every grant is explainable.** `natsacl explain <user> <subject>` prints the call sites and the chain of declarations behind it.
+- **Zero runtime dependencies** beyond your own `typescript`.
 
 ## Install
 
@@ -34,7 +52,7 @@ The second thing it closes is subtler. JetStream does not enforce subscribe perm
 npm install --save-dev natsacl typescript
 ```
 
-Node 20+. TypeScript 5+ is a peer dependency; the analysis runs on your project's own `tsconfig.json`.
+Node 20 or later. TypeScript 5 or later is a peer dependency; the analysis runs on your project's own `tsconfig.json`.
 
 ## Quick start
 
@@ -74,8 +92,13 @@ The [`examples/ingest-alerts`](./examples/ingest-alerts) project shows two servi
 
 ## How it works
 
-1. **Parse.** The project is loaded as a real TypeScript program with the type checker, so imports, barrels, aliases, overloads, interfaces and class hierarchies resolve the way `tsc` resolves them.
-2. **Match.** Every call is matched against a table of *shapes* — which method on which receiver type is a publish, a request, a subscribe, a JetStream consumer creation, and which argument carries the subject, stream and durable name. The built-in table covers the official `nats` and `@nats-io/*` clients; your own wrappers are declared in config or with a `@natsacl` JSDoc tag.
+```
+ tsconfig.json ──▶ ts.Program ──▶ match calls ──▶ evaluate subjects ──▶ attribute ──▶ derive grants ──▶ render
+                   (checker)      (shape table)    (finite patterns)    (reachability)  (+ stream check)   (+ check/lint)
+```
+
+1. **Parse.** The project is loaded as a real TypeScript program with the type checker.
+2. **Match.** Every call is matched against a table of *shapes* — which method on which receiver type is a publish, a request, a subscribe, a JetStream consumer creation, and which argument carries the subject, stream and durable name. The built-in table covers the official `nats` and `@nats-io/*` clients; your own wrappers are declared in config or with a `@natsacl` JSDoc tag. The receiver is matched by its declared type, everything it extends or implements, and the class or interface that declares the called member — so a `Pick<NatsConnection, 'publish'>` still matches.
 3. **Evaluate.** The subject argument is evaluated to a finite set of NATS patterns:
    - string literals, `as const` objects, enums, constants across modules;
    - template literals, `+`, `[…].join('.')`, ternaries, `??` and `||`;
@@ -83,8 +106,8 @@ The [`examples/ingest-alerts`](./examples/ingest-alerts) project shows two servi
    - records indexed by a dynamic key (every member), and pure string transforms over a finite set (`toLowerCase`, `replace` with literal arguments);
    - functions that return subjects, inlined with their arguments bound;
    - **wrapper parameters**, evaluated at every call site of the wrapper — including calls through the interfaces and base classes it implements;
-   - **abstract or uninitialised properties**, evaluated at every subclass that initialises them, so a base class calling `this.nats.subscribe(this.subject)` yields one fact per concrete subscriber.
-4. **Attribute.** A fact belongs to a service when the file performing the call, and every file its value travelled through, is reachable through imports from that service's entry. A shared library's subscriber base class is granted only to the services whose subclasses use it.
+   - **abstract or uninitialised properties**, evaluated at every subclass that initialises them, so a base class calling `this.nats.subscribe(this.subject)` yields one fact per concrete subscriber, each paired with that subscriber's own durable name.
+4. **Attribute.** A fact belongs to a service when the file performing the call, and every product file its value travelled through, is reachable through imports from that service's entry.
 5. **Derive.** Facts become grants (table below), lists are minimised (`SENSORS.reading` is dropped when `SENSORS.>` is present), and every grant keeps the call sites that justify it.
 6. **Check.** Filters are verified against provisioned streams; the rendered output is compared with the checked-in file.
 
@@ -107,7 +130,7 @@ Every error names the fix: declare the pattern with a comment on the call, an `o
 this.nc.publish(buildLegacySubject(), payload);
 ```
 
-### What a consumer needs
+## What a consumer needs
 
 | The code does | User may publish | User may subscribe |
 |---|---|---|
@@ -120,20 +143,12 @@ this.nc.publish(buildLegacySubject(), payload);
 | `jsm.consumers.add('S', { durable_name: 'D', filter_subject: 'A.>' })` | as above, with filter `A.>` | `_INBOX.>` |
 | `js.consumers.get('S', 'D')` | `INFO`, `MSG.NEXT`, `$JS.ACK.S.D.>` | `_INBOX.>` |
 | stream not named in code | inferred from provisioned streams by filter coverage; `$JS.API.STREAM.NAMES` added because the client looks it up | |
+| stream named in code | verified to exist and to carry the filter; otherwise an error and no grant | |
 | durable not a literal | `*` for the consumer token, reported as `consumer-wide-grant` | |
 | unnamed (ephemeral / ordered) consumer | `*` for the consumer token, plus `CONSUMER.DELETE` | |
 | `jsm.streams.add(…)` inside a service | **nothing** — reported as `stream-admin-in-service`; streams are provisioned by the `admin` user | |
 
 Set `jetstream.api: "legacy"` to also grant `$JS.API.CONSUMER.DURABLE.CREATE` for servers before 2.9.
-
-## Validation on a real codebase
-
-Before release the compiler was run over a 14-service TypeScript monorepo (a shared library of about 1,800 files plus the services; roughly 1,300 files reachable per service) that already maintained a hand-written per-service NATS permissions file. The whole backend compiles in about eleven seconds.
-
-- Consumer-creation grants agreed with the hand-maintained file on 392 of 402 entries. The remaining ten came from wrapper types the validation config had not declared, which `shape-unused` and `explain` make visible.
-- For one service, 37 of its 49 consumer grants were scoped to the literal durable name the code uses; the hand-maintained file used `*` for every one.
-- Eight literal subjects replaced one `PREFIX.>` wildcard where a union type enumerated the exact set the code could publish.
-- Every subject the compiler could not resolve was reported with its call site; there were none left after three `${service}` overrides for a command bus built from the runtime service name.
 
 ## Configuration
 
@@ -159,7 +174,7 @@ Before release the compiler was run over a 14-service TypeScript monorepo (a sha
 | `lint.deadSubjects`, `lint.overBroad` | `error` / `warning` / `off` | `warning` |
 | `maxExpansions`, `maxDepth` | Bounds on enumeration and inlining | `256`, `8` |
 
-### Declaring your own wrappers
+## Declaring your own wrappers
 
 Most codebases wrap the client. A wrapper whose subject is a parameter needs no declaration at all — the evaluator follows the parameter to every caller — as long as the wrapper's own call to the client is visible to the program. When it is not (the wrapper lives in a compiled package, or the client call is indirect), declare the shape once:
 
@@ -183,7 +198,7 @@ or in config:
 ] } }
 ```
 
-`receiverTypes` match the receiver's declared type, anything it extends, and anything it implements. A shape that matches no call is reported (`shape-unused`) so a typo cannot silently drop a whole class of grants. A declared wrapper is opaque: the client calls inside its body are what the declaration stands for and are not analysed again.
+`receiverTypes` match the receiver's declared type, anything it extends, anything it implements, and the owner of the called member. A shape that matches no call is reported (`shape-unused`) so a typo cannot silently drop a whole class of grants. A declared wrapper is opaque: the client calls inside its body are what the declaration stands for and are not analysed again.
 
 ### The running service's name
 
@@ -222,7 +237,7 @@ natsacl init    [--dir <path>]
 
 Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warnings with `--strict` · `2` usage or config error. `compile` writes nothing when the model has errors.
 
-### Diagnostics
+## Diagnostics
 
 | Code | Severity | Meaning |
 |---|---|---|
@@ -248,6 +263,26 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 
 Pair it with the stream provisioning you already have: point `streams` at `nats stream info -j` output captured from the environment, or at the code that calls `jsm.streams.add`, and the coverage check runs against the same definitions the server will.
 
+## Validation on a real codebase
+
+Before release the compiler was run over a 14-service TypeScript monorepo (a shared library of about 1,800 files plus the services; roughly 1,300 files reachable per service) that already maintained a hand-written per-service NATS permissions file. The whole backend compiles in about eleven seconds.
+
+- Consumer-creation grants agreed with the hand-maintained file on 392 of 402 entries. The remaining ten came from a wrapper type the validation config had not declared and one service that never imports the command router, both of which `explain` makes visible.
+- For one service, 37 of its 49 consumer grants were scoped to the literal durable name the code uses; the hand-maintained file used `*` for every one.
+- Eight literal subjects replaced one `PREFIX.>` wildcard where a union type enumerated the exact set the code could publish.
+- Every subject the compiler could not resolve was reported with its call site; there were none left after three `${service}` overrides for a command bus built from the runtime service name.
+
+## Comparison
+
+| | Hand-written `nats-server.conf` / `nsc` | Control planes and Terraform | IAM policy generators (traffic-based) | **natsacl** |
+|---|---|---|---|---|
+| Source of truth | a person | a person | observed traffic | the code |
+| Drift detection | none | none | not applicable | `check` in CI |
+| JetStream filter scoping | by hand | by hand | not applicable | from the filter the code uses |
+| Stream coverage check | none | none | not applicable | every filter against provisioned streams |
+| Justification per grant | none | none | request log | `explain`: call sites and declaration chain |
+| Broker | NATS | NATS | cloud IAM | NATS (subject-based brokers are the natural next step) |
+
 ## Limits, stated plainly
 
 - **Only what the program can see.** Calls made by compiled dependencies, or by code outside the `tsconfig`, are invisible; declare them with a shape or an override. Dependency-injected wrappers whose subject arrives from outside the program need a declaration too — the `no-callers` error says so.
@@ -256,6 +291,14 @@ Pair it with the stream provisioning you already have: point `streams` at `nats 
 - **A permission pattern containing `*` also admits the literal token `*`**, so `$JS.API.CONSUMER.CREATE.S.D.SENSORS.*` allows creating a consumer with filter `SENSORS.anything` as well as `SENSORS.*`. This is inherent to NATS permissions.
 - **KV and Object Store** buckets (`$KV.>`, `$O.>`) are not yet derived; add them with `extraPublish`/`extraSubscribe`.
 - **Operator mode** output is an `nsc` script and JWT JSON; `natsacl` does not mint or push JWTs.
+
+## Roadmap
+
+- KV and Object Store subject derivation from `views.kv()` / `views.os()` calls.
+- `jetstream.defaultStream` for wrappers that read the stream name from configuration.
+- Wrappers that switch between core and JetStream by the presence of an option.
+- GitHub Actions annotations from `check` and `lint`.
+- Other subject-based brokers behind the same evaluator.
 
 ## Contributing
 
@@ -268,4 +311,4 @@ Tests run the compiler over fixture projects in `test/fixtures` and assert on th
 
 ## License
 
-MIT
+[MIT](./LICENSE)
