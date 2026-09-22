@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <img src="assets/logo.svg" width="520" alt="natsacl">
+    <img src="assets/logo.svg" width="400" alt="natsacl">
   </picture>
 </p>
 

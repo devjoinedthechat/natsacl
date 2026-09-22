@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="560" height="140" viewBox="0 0 560 140" role="img" aria-label="natsacl — least-privilege NATS permissions compiled from TypeScript">
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="140" viewBox="0 0 400 140" role="img" aria-label="natsacl">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#14b8a6"/>
@@ -14,6 +14,5 @@
     <path d="M90 84 v-6 a9 9 0 0 1 18 0 v6" fill="none" stroke="#0b1220" stroke-width="4.5" opacity="0.92"/>
     <circle cx="99" cy="95" r="3" fill="#5eead4"/>
   </g>
-  <text x="156" y="76" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1.5" fill="#0f172a">nats<tspan fill="#0f766e">acl</tspan></text>
-  <text x="158" y="112" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" fill="#475569">least-privilege NATS permissions, compiled from TypeScript</text>
+  <text x="156" y="91" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="62" font-weight="700" letter-spacing="-1.5" fill="#0f172a">nats<tspan fill="#0f766e">acl</tspan></text>
 </svg>
