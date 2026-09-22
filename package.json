@@ -4,7 +4,7 @@
   "description": "Least-privilege NATS permissions compiled from your TypeScript: one broker user per service, a CI drift gate, and JetStream consumer filters verified against your streams.",
   "type": "module",
   "bin": {
-    "natsacl": "./dist/cli.js"
+    "natsacl": "./dist/bin.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,6 +16,7 @@
   },
   "files": [
     "dist",
+    "assets",
     "README.md",
     "LICENSE"
   ],

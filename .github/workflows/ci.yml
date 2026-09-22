@@ -24,3 +24,12 @@ jobs:
       # Dogfood: the checked-in example conf must equal what the code implies.
       - run: node dist/bin.js check --config examples/ingest-alerts/natsacl.config.json
       - run: node dist/bin.js lint --config examples/ingest-alerts/natsacl.config.json
+      # The published artifact: pack, install into a fresh project, run the CLI the way a user does.
+      - run: |
+          set -euo pipefail
+          tgz=$(npm pack --pack-destination "$RUNNER_TEMP" | tail -1)
+          cp -R examples/ingest-alerts "$RUNNER_TEMP/proj"
+          cd "$RUNNER_TEMP/proj"
+          npm install --no-audit --no-fund "$RUNNER_TEMP/$tgz" nats@^2.29 typescript@^5.7
+          npx natsacl --version
+          npx natsacl check
