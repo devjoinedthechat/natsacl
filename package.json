@@ -1,0 +1,57 @@
+{
+  "name": "natsacl",
+  "version": "0.1.0",
+  "description": "Least-privilege NATS permissions compiled from your TypeScript, with a CI drift gate and a JetStream stream-coverage check.",
+  "type": "module",
+  "bin": {
+    "natsacl": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0"
+  },
+  "devDependencies": {
+    "@nats-io/jetstream": "^3.4.0",
+    "@nats-io/nats-core": "^3.4.0",
+    "@types/node": "^22.10.0",
+    "nats": "^2.29.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "keywords": [
+    "nats",
+    "jetstream",
+    "acl",
+    "permissions",
+    "least-privilege",
+    "static-analysis",
+    "typescript",
+    "security"
+  ],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/devjoinedthechat/natsacl.git" },
+  "homepage": "https://github.com/devjoinedthechat/natsacl#readme",
+  "bugs": { "url": "https://github.com/devjoinedthechat/natsacl/issues" }
+}

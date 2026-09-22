@@ -1,0 +1,12 @@
+{
+  "$schema": "../../schema/natsacl.config.schema.json",
+  "tsconfig": "tsconfig.json",
+  "services": [
+    { "name": "ingest", "entry": "src/ingest/main.ts" },
+    { "name": "alerts", "entry": "src/alerts/main.ts", "user": "alerts-svc" }
+  ],
+  "streams": "from-code",
+  "external": { "subscribers": ["SENSORS.>"], "publishers": ["ALERTS.>", "*.TASKS"] },
+  "admin": { "user": "admin" },
+  "output": { "format": "server", "file": "nats/auth.conf" }
+}

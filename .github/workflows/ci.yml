@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # Dogfood: the checked-in example conf must equal what the code implies.
+      - run: node dist/bin.js check --config examples/ingest-alerts/natsacl.config.json
+      - run: node dist/bin.js lint --config examples/ingest-alerts/natsacl.config.json

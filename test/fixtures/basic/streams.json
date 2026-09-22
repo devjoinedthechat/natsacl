@@ -1,0 +1,4 @@
+[
+  { "config": { "name": "TELEMETRY", "subjects": ["SENSORS.>", "ALERTS.>", "INCIDENTS.>"] } },
+  { "config": { "name": "DIAGNOSTICS", "subjects": ["DIAG.>"] } }
+]

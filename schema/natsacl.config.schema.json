@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://raw.githubusercontent.com/devjoinedthechat/natsacl/main/schema/natsacl.config.schema.json",
+  "title": "natsacl configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "tsconfig": { "type": "string", "description": "Path to the tsconfig that describes the program. Default: tsconfig.json next to the config." },
+    "services": {
+      "type": "array",
+      "description": "One broker user per service. Omit for a single-service project.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "entry"],
+        "properties": {
+          "name": { "type": "string" },
+          "user": { "type": "string", "description": "Broker user name; default: userTemplate applied to name." },
+          "entry": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }], "description": "Entry file(s); everything reachable through imports belongs to the service." },
+          "tsconfig": { "type": "string" },
+          "inboxPrefix": { "type": "string" },
+          "extraPublish": { "type": "array", "items": { "type": "string" } },
+          "extraSubscribe": { "type": "array", "items": { "type": "string" } },
+          "denyPublish": { "type": "array", "items": { "type": "string" } },
+          "denySubscribe": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "userTemplate": { "type": "string", "description": "${service} and ${SERVICE} expand to the service name. Default: ${service}." },
+    "passwordEnvTemplate": { "type": "string", "description": "Default: ${SERVICE}_NATS_PASSWORD." },
+    "shapes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extend": { "type": "array", "items": { "$ref": "#/definitions/shape" } },
+        "replace": { "type": "array", "items": { "$ref": "#/definitions/shape" } }
+      }
+    },
+    "jetstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api": { "enum": ["modern", "legacy"], "description": "modern: nats-server >= 2.9 consumer create API. legacy: also grant DURABLE.CREATE." },
+        "consumerScoping": { "enum": ["auto", "wildcard"], "description": "auto: scope consumer grants to literal durable names. wildcard: always use * for the consumer token." },
+        "allowConsumerDelete": { "oneOf": [{ "type": "boolean" }, { "const": "auto" }] }
+      }
+    },
+    "streams": {
+      "oneOf": [
+        { "const": "from-code", "description": "Read stream definitions from jsm.streams.add/update calls in the program." },
+        { "type": "object", "additionalProperties": false, "required": ["file"], "properties": { "file": { "type": "string", "description": "JSON: [{name, subjects}], {streams:[…]}, or `nats stream info -j` documents." } } },
+        { "type": "array", "items": { "type": "object", "required": ["name", "subjects"], "properties": { "name": { "type": "string" }, "subjects": { "type": "array", "items": { "type": "string" } }, "source": { "type": "string" } } } }
+      ]
+    },
+    "inboxPrefix": { "type": "string", "description": "Default: _INBOX." },
+    "widenPartialTokens": { "type": "boolean", "description": "Turn a token that mixes literal text and a dynamic value into *, and report it. Default: false (error)." },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line", "subject"],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "subject": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] }
+        }
+      }
+    },
+    "external": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publishers": { "type": "array", "items": { "type": "string" } },
+        "subscribers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "admin": {
+      "oneOf": [
+        { "const": false },
+        { "type": "object", "additionalProperties": false, "required": ["user"], "properties": { "user": { "type": "string" }, "passwordEnv": { "type": "string" } } }
+      ]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": { "enum": ["server", "nsc", "jwt", "json", "markdown"] },
+        "file": { "type": "string" },
+        "account": { "type": "string" }
+      }
+    },
+    "lint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deadSubjects": { "enum": ["error", "warning", "off"] },
+        "overBroad": { "enum": ["error", "warning", "off"] }
+      }
+    },
+    "maxExpansions": { "type": "integer", "minimum": 1 },
+    "maxDepth": { "type": "integer", "minimum": 1 }
+  },
+  "definitions": {
+    "argRef": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "object", "additionalProperties": false, "required": ["arg", "path"], "properties": { "arg": { "type": "integer", "minimum": 0 }, "path": { "type": "string" } } }
+      ]
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "callee"],
+      "properties": {
+        "kind": { "enum": ["publish", "request", "respond", "subscribe", "js-publish", "js-subscribe", "js-consumer-add", "js-consumer-get", "js-consumer-info", "js-consumer-delete", "js-stream-admin", "service-endpoint"] },
+        "callee": { "type": "string" },
+        "receiverTypes": { "type": "array", "items": { "type": "string" }, "description": "Type names the receiver must be, extend or implement. Empty: a free function. Omitted: any receiver." },
+        "subject": { "$ref": "#/definitions/argRef" },
+        "stream": { "$ref": "#/definitions/argRef" },
+        "durable": { "$ref": "#/definitions/argRef" },
+        "mode": { "enum": ["pull", "push"] },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

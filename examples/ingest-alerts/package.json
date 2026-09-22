@@ -1,0 +1,16 @@
+{
+  "name": "ingest-alerts-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "acl": "natsacl compile",
+    "acl:check": "natsacl check",
+    "acl:lint": "natsacl lint",
+    "acl:explain": "natsacl explain"
+  },
+  "devDependencies": {
+    "nats": "^2.29.0",
+    "natsacl": "^0.1.0",
+    "typescript": "^5.7.0"
+  }
+}
