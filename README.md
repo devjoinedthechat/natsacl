@@ -363,7 +363,7 @@ Before release the compiler was run over a 14-service TypeScript monorepo (a sha
 | JetStream filter scoping | by hand | by hand | not applicable | from the filter the code uses |
 | Stream coverage check | none | none | not applicable | every filter against provisioned streams |
 | Justification per grant | none | none | request log | `explain`: call sites and declaration chain |
-| Broker | NATS | NATS | cloud IAM | NATS (subject-based brokers are the natural next step) |
+| Broker | NATS | NATS | cloud IAM | NATS |
 
 ## Limits, stated plainly
 
@@ -371,7 +371,7 @@ Before release the compiler was run over a 14-service TypeScript monorepo (a sha
 - **A dynamic token is `*`, not `>`.** `` `LOGS.${path}` `` where `path` contains dots is under-granted; a runtime permission error will tell you, and an override fixes it. The compiler never widens silently.
 - **Consumer names cannot be scoped per user** when they are not literals: JetStream API subjects carry the consumer name as one token, so `INFO`/`NEXT`/`ACK` fall back to `*` for that stream.
 - **A permission pattern containing `*` also admits the literal token `*`**, so `$JS.API.CONSUMER.CREATE.S.D.SENSORS.*` allows creating a consumer with filter `SENSORS.anything` as well as `SENSORS.*`. This is inherent to NATS permissions.
-- **Object Store** buckets (`$O.>`) are not derived; add them with `extraPublish`/`extraSubscribe`. KV buckets are, from literal bucket names only.
+- **Object Store** buckets (`$O.>`) are not derived; add them with `extraPublish`/`extraSubscribe`. KV buckets are derived from literal bucket names only.
 - **Operator mode** output is an `nsc` script and JWT JSON; `natsacl` does not mint or push JWTs.
 
 ## Programmatic use
