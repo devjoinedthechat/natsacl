@@ -94,6 +94,10 @@ describe('cli', () => {
     expect(r.out).toContain('src/alerts/incidents.ts:');
     expect(r.out).toContain('may NOT subscribe INCIDENTS.opened');
     expect((await run(['explain', 'ghost', 'X'], work)).code).toBe(2);
+    const json = JSON.parse((await run(['explain', 'alerts-svc', 'INCIDENTS.opened', '--json'], work)).out) as { user: string; publish: { grant: string; provenance: { location: { file: string } }[] }[] };
+    expect(json.user).toBe('alerts-svc');
+    expect(json.publish[0]!.grant).toBe('INCIDENTS.opened');
+    expect(json.publish[0]!.provenance[0]!.location.file).toBe('src/alerts/incidents.ts');
   });
 
   it('init writes a starter config once', async () => {

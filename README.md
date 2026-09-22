@@ -20,7 +20,7 @@
 
 ---
 
-**Contents** · [Why](#why) · [Highlights](#highlights) · [Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [What a consumer needs](#what-a-consumer-needs) · [Configuration](#configuration) · [Your own wrappers](#declaring-your-own-wrappers) · [Policy](#policy) · [Output formats](#output-formats) · [CLI](#cli) · [Diagnostics](#diagnostics) · [CI](#ci) · [Validation](#validation-on-a-real-codebase) · [Comparison](#comparison) · [Limits](#limits-stated-plainly) · [Contributing](#contributing)
+**Contents** · [Why](#why) · [Highlights](#highlights) · [Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [What a consumer needs](#what-a-consumer-needs) · [Configuration](#configuration) · [Recognised calls](#recognised-calls) · [Your own wrappers](#declaring-your-own-wrappers) · [Policy](#policy) · [Output formats](#output-formats) · [CLI](#cli) · [Diagnostics](#diagnostics) · [CI](#ci) · [Validation](#validation-on-a-real-codebase) · [Comparison](#comparison) · [Limits](#limits-stated-plainly) · [Programmatic use](#programmatic-use) · [Contributing](#contributing)
 
 ## Why
 
@@ -143,7 +143,7 @@ this.nc.publish(buildLegacySubject(), payload);
 | stream not named in code | inferred from provisioned streams by filter coverage; `$JS.API.STREAM.NAMES` added because the client looks it up | |
 | stream named in code | verified to exist and to carry the filter; otherwise an error and no grant | |
 | durable not a literal | `*` for the consumer token, reported as `consumer-wide-grant` | |
-| unnamed (ephemeral / ordered) consumer | `*` for the consumer token, plus `CONSUMER.DELETE` | |
+| unnamed (ephemeral / ordered) consumer | the bare `$JS.API.CONSUMER.CREATE.S` the client uses for it (no name, no filter — reported as `consumer-wide-grant`), `*` for the consumer token, plus `CONSUMER.DELETE` | |
 | `js.views.kv('cfg', { bindOnly: true })` / `kvm.open('cfg')` | `$KV.cfg.>`, `$JS.API.STREAM.INFO.KV_cfg`, `$JS.API.DIRECT.GET.KV_cfg.>`, `$JS.API.STREAM.MSG.GET.KV_cfg`, and `CONSUMER.CREATE/INFO/MSG.NEXT/DELETE` on `KV_cfg` for watches (server-named ordered consumers) | `_INBOX.>` |
 | `js.views.kv('cfg')` without `bindOnly` / `kvm.create('cfg')` | as above, plus a `kv-create-in-service` warning: creating the bucket is stream administration | |
 | `jsm.streams.info('S')`, `streams.list()`, `streams.names()`, `getAccountInfo()` | `$JS.API.STREAM.INFO.S`, or `$JS.API.STREAM.LIST` and `$JS.API.STREAM.NAMES`; `$JS.API.INFO` | `_INBOX.>` |
@@ -175,6 +175,26 @@ Set `jetstream.api: "legacy"` to also grant `$JS.API.CONSUMER.DURABLE.CREATE` fo
 | `lint.deadSubjects`, `lint.overBroad` | `error` / `warning` / `off` | `warning` |
 | `policy.forbid[]` | `{ subject, publish?, subscribe?, except?, reason? }` — grants the code must never imply; see [Policy](#policy) | |
 | `maxExpansions`, `maxDepth` | Bounds on enumeration and inlining | `256`, `8` |
+
+## Recognised calls
+
+The built-in shape table covers the official clients (`nats` v2 and `@nats-io/*` v3). Anything else is invisible until declared.
+
+| Receiver type | Calls | Fact |
+|---|---|---|
+| `NatsConnection` | `publish`, `request`, `requestMany`, `subscribe` | publish · request · subscribe |
+| `Msg`, `JsMsg` | `respond` | `allow_responses` |
+| `JetStreamClient` | `publish`, `subscribe`, `pullSubscribe`, `fetch`, `pull` | JetStream publish · consumer creation and consumption |
+| `Consumers` | `get(stream, name)` | consumption of an existing consumer |
+| `ConsumerAPI` | `add`, `update`, `info`, `delete` | consumer administration, scoped to the filter and name |
+| `StreamAPI`, `Streams` | `info`, `get`, `list`, `names`, `find` | read-only stream API |
+| `StreamAPI` | `add`, `update`, `delete`, `purge` | stream administration — never granted, reported; feeds `streams: "from-code"` |
+| `JetStreamManager` | `getAccountInfo` | `$JS.API.INFO` |
+| `Views` | `kv(name, { bindOnly })` | KV bucket |
+| `Kvm` | `open`, `create` | KV bucket |
+| `Service`, `ServiceGroup` | `addEndpoint(name, { subject })` | service endpoint |
+
+A wrapper whose subject is a parameter needs no entry: the evaluator follows the parameter to every caller. Declare a shape only when the wrapper's own client call is not visible to the program.
 
 ## Declaring your own wrappers
 
@@ -274,9 +294,21 @@ const nc = await connect({ servers, inboxPrefix: `_INBOX_${process.env.SERVICE_N
 natsacl compile [--config <file>] [--format <fmt>] [--out <file>] [--stdout] [--quiet]
 natsacl check   [--config <file>] [--format <fmt>] [--out <file>]
 natsacl lint    [--config <file>] [--strict]
-natsacl explain <service> <subject> [--config <file>]
+natsacl explain <service> <subject> [--config <file>] [--json]
 natsacl init    [--dir <path>]
+natsacl --help | --version
 ```
+
+```
+$ natsacl explain alerts-svc INCIDENTS.opened
+alerts-svc may publish INCIDENTS.opened via "INCIDENTS.opened"
+  js-publish "INCIDENTS.opened" at src/alerts/incidents.ts:17:11 [template]
+alerts-svc may NOT subscribe INCIDENTS.opened
+```
+
+`explain --json` prints the same as `{ service, user, publish: [{ grant, provenance }], subscribe: [...] }` for tooling.
+
+Under GitHub Actions every diagnostic is also emitted as a workflow command (`--annotations` forces this elsewhere, `--no-annotations` suppresses it). A large monorepo can need more heap than Node's default: `NODE_OPTIONS=--max-old-space-size=4096 npx natsacl check`.
 
 Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warnings with `--strict` · `2` usage or config error. `compile` writes nothing when the model has errors.
 
@@ -288,6 +320,7 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 | `policy-violation` | error | The code implies a grant that `policy.forbid` rules out for this service. No file is written. |
 | `filter-not-in-stream` | error | A consumer filter no provisioned stream carries, or a stream named in code that is not provisioned. No grant is emitted. |
 | `entry-missing` | error | A service entry is not part of the program. |
+| `invalid-subject` | error | A stream definition (config or file) has an invalid name or subject. |
 | `publish-not-in-stream` | warning | A JetStream publish no stream captures; it would time out with no responders. |
 | `no-subscriber` / `no-publisher` | warning | Dead subjects. Declare `external.*` for subjects handled by other systems. |
 | `consumer-wide-grant` | warning | The durable name is not a literal, so consumer grants use `*`. |
@@ -299,6 +332,7 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 | `widened` | warning | A partial token was widened under `widenPartialTokens`. |
 | `shape-unused` | warning | A declared shape matched nothing. |
 | `override-used` | info | A subject came from an override rather than the code. |
+| `stream-ambiguous` | info | A filter is carried by several provisioned streams; consumer grants are emitted for each. |
 
 ## CI
 
@@ -307,7 +341,7 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 - run: npx natsacl lint --strict
 ```
 
-Under GitHub Actions every diagnostic is also emitted as a workflow command, so unresolved subjects, policy violations and uncovered filters appear as annotations on the pull request diff at the call site. Pass `--annotations` to get them elsewhere, or `--no-annotations` to suppress them.
+Under GitHub Actions every diagnostic is also emitted as a workflow command, so unresolved subjects, policy violations and uncovered filters appear as annotations on the pull request diff at the call site.
 
 Pair it with the stream provisioning you already have: point `streams` at `nats stream info -j` output captured from the environment, or at the code that calls `jsm.streams.add`, and the coverage check runs against the same definitions the server will.
 
@@ -339,6 +373,20 @@ Before release the compiler was run over a 14-service TypeScript monorepo (a sha
 - **A permission pattern containing `*` also admits the literal token `*`**, so `$JS.API.CONSUMER.CREATE.S.D.SENSORS.*` allows creating a consumer with filter `SENSORS.anything` as well as `SENSORS.*`. This is inherent to NATS permissions.
 - **Object Store** buckets (`$O.>`) are not derived; add them with `extraPublish`/`extraSubscribe`. KV buckets are, from literal bucket names only.
 - **Operator mode** output is an `nsc` script and JWT JSON; `natsacl` does not mint or push JWTs.
+
+## Programmatic use
+
+```ts
+import { loadConfig, buildModel, render, explain, hasErrors } from 'natsacl';
+
+const config = await loadConfig({ cwd: process.cwd() });
+const model = buildModel(config);          // grants, provenance, streams, diagnostics
+if (hasErrors(model.diagnostics)) throw new Error('unresolved subjects or policy violations');
+const conf = render(model, config, 'server');
+const why = explain(model, 'alerts-svc', 'INCIDENTS.opened');
+```
+
+`compile()` does the three steps in one call. `defineConfig()` is an identity helper for JavaScript config files. The model's `analyses[].facts` carry every broker operation the analyser found, with file, line and the chain of declarations the subject travelled through.
 
 ## Contributing
 

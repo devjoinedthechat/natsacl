@@ -1,7 +1,7 @@
 {
   "name": "natsacl",
   "version": "0.1.0",
-  "description": "Least-privilege NATS permissions compiled from your TypeScript, with a CI drift gate and a JetStream stream-coverage check.",
+  "description": "Least-privilege NATS permissions compiled from your TypeScript: one broker user per service, a CI drift gate, and JetStream consumer filters verified against your streams.",
   "type": "module",
   "bin": {
     "natsacl": "./dist/cli.js"
@@ -42,16 +42,25 @@
   },
   "keywords": [
     "nats",
+    "nats-server",
     "jetstream",
     "acl",
     "permissions",
     "least-privilege",
+    "access-control",
     "static-analysis",
     "typescript",
-    "security"
+    "security",
+    "devsecops",
+    "ci"
   ],
   "license": "MIT",
-  "repository": { "type": "git", "url": "git+https://github.com/devjoinedthechat/natsacl.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devjoinedthechat/natsacl.git"
+  },
   "homepage": "https://github.com/devjoinedthechat/natsacl#readme",
-  "bugs": { "url": "https://github.com/devjoinedthechat/natsacl/issues" }
+  "bugs": {
+    "url": "https://github.com/devjoinedthechat/natsacl/issues"
+  }
 }

@@ -13,7 +13,7 @@ Usage:
   natsacl check   [--config <file>] [--format <fmt>] [--out <file>]
   natsacl lint    [--config <file>] [--strict]
   (--annotations / --no-annotations: GitHub Actions workflow commands; on by default under Actions)
-  natsacl explain <service> <subject> [--config <file>]
+  natsacl explain <service> <subject> [--config <file>] [--json]
   natsacl init    [--dir <path>]
 
 Formats: ${OUTPUT_FORMATS.join(', ')} (default: config output.format, else server)
@@ -52,7 +52,7 @@ export function parseArgs(argv: readonly string[]): Args {
   return { command: positional[0], positional: positional.slice(1), flags };
 }
 
-const BOOLEAN_FLAGS = new Set(['stdout', 'strict', 'quiet', 'help', 'version', 'annotations', 'no-annotations']);
+const BOOLEAN_FLAGS = new Set(['stdout', 'strict', 'quiet', 'help', 'version', 'annotations', 'no-annotations', 'json']);
 
 /** Annotations are on under GitHub Actions unless `--no-annotations`; `--annotations` forces them elsewhere. */
 function wantAnnotations(args: Args): boolean {
@@ -165,6 +165,12 @@ async function runExplain(args: Args, cwd: string, configPath: string | undefine
     return 2;
   }
   const rel = (file: string): string => relative(config.rootDir, file) || file;
+  if (args.flags.has('json')) {
+    const relLoc = (l: { file: string; line: number; col: number }) => ({ ...l, file: rel(l.file) });
+    const grants = (list: typeof explanation.publish) => list.map((g) => ({ grant: g.grant, provenance: g.provenance.map((p) => ({ ...p, location: relLoc(p.location), via: p.via.map(relLoc) })) }));
+    io.out(JSON.stringify({ service: explanation.service.service, user: explanation.service.user, subject, publish: grants(explanation.publish), subscribe: grants(explanation.subscribe) }, null, 2) + '\n');
+    return 0;
+  }
   for (const [list, grants] of [
     ['publish', explanation.publish],
     ['subscribe', explanation.subscribe],
