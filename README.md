@@ -48,6 +48,8 @@ It closes a second, subtler gap. JetStream does not enforce subscribe permission
 
 ```sh
 npm install --save-dev natsacl typescript
+# or straight from the repository:
+npm install --save-dev github:devjoinedthechat/natsacl typescript
 ```
 
 Node 20 or later. TypeScript 5 or later is a peer dependency; the analysis runs on your project's own `tsconfig.json`.
