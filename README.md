@@ -343,7 +343,7 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 - run: npx natsacl lint --strict
 ```
 
-Under GitHub Actions every diagnostic is also emitted as a workflow command, so unresolved subjects, policy violations and uncovered filters appear as annotations on the pull request diff at the call site.
+Under GitHub Actions every diagnostic is also emitted as a workflow command on stderr, so unresolved subjects, policy violations and uncovered filters appear as annotations on the pull request diff at the call site, and `compile --stdout` output stays parseable.
 
 Pair it with the stream provisioning you already have: point `streams` at `nats stream info -j` output captured from the environment, or at the code that calls `jsm.streams.add`, and the coverage check runs against the same definitions the server will.
 

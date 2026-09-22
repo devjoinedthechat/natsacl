@@ -215,7 +215,9 @@ function printDiagnostics(model: Model, rootDir: string, io: { out: (s: string) 
   for (const d of model.diagnostics) {
     if (quiet && d.severity !== 'error') continue;
     io.err(formatDiagnostic(d, rootDir) + '\n');
-    if (annotations) io.out(githubAnnotation(d, process.cwd()) + '\n');
+    // Workflow commands go to stderr: the runner scans both streams, and stdout may be the artifact
+    // itself (`compile --stdout`), which must stay parseable.
+    if (annotations) io.err(githubAnnotation(d, process.cwd()) + '\n');
   }
 }
 

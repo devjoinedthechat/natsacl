@@ -17,11 +17,18 @@ function run(argv: string[], cwd: string): Promise<{ code: number; out: string; 
 
 describe('cli', () => {
   let work: string;
+  let ambientActions: string | undefined;
   beforeAll(() => {
     work = mkdtempSync(resolve(tmpdir(), 'natsacl-'));
     cpSync(fixture('basic'), work, { recursive: true });
+    // The suite itself runs under Actions; the CLI's auto-detection must not leak into these assertions.
+    ambientActions = process.env.GITHUB_ACTIONS;
+    delete process.env.GITHUB_ACTIONS;
   });
-  afterAll(() => rmSync(work, { recursive: true, force: true }));
+  afterAll(() => {
+    rmSync(work, { recursive: true, force: true });
+    if (ambientActions !== undefined) process.env.GITHUB_ACTIONS = ambientActions;
+  });
 
   it('parses flags in both forms', () => {
     const a = parseArgs(['compile', '--config', 'x.json', '--format=nsc', '--stdout', 'extra']);
@@ -113,10 +120,21 @@ describe('cli', () => {
     expect((await run(['compile', '--config', 'missing.json'], work)).code).toBe(2);
   });
 
-  it('prints GitHub Actions annotations when asked, with repo-relative paths', async () => {
+  it('prints GitHub Actions annotations on stderr when asked, with repo-relative paths, and stdout stays the artifact', async () => {
     const r = await run(['lint', '--annotations'], work);
-    expect(r.out).toContain('::warning file=src/shared/base-subscriber.ts,line=11,col=11,title=natsacl consumer-wide-grant [alerts]::');
-    expect(r.out).toContain('::notice file=src/ingest/reading.service.ts,line=35,col=5,title=natsacl override-used::');
+    expect(r.err).toContain('::warning file=src/shared/base-subscriber.ts,line=11,col=11,title=natsacl consumer-wide-grant [alerts]::');
+    expect(r.err).toContain('::notice file=src/ingest/reading.service.ts,line=35,col=5,title=natsacl override-used::');
+    expect(r.out).not.toContain('::');
+    process.env.GITHUB_ACTIONS = 'true';
+    try {
+      const inActions = await run(['compile', '--stdout', '--format', 'jwt'], work);
+      expect(JSON.parse(inActions.out).users).toHaveLength(2);
+      expect(inActions.err).toContain('::warning ');
+      const off = await run(['compile', '--stdout', '--format', 'jwt', '--no-annotations'], work);
+      expect(off.err).not.toContain('::warning ');
+    } finally {
+      delete process.env.GITHUB_ACTIONS;
+    }
     expect(githubAnnotation({ severity: 'error', code: 'policy-violation', message: 'a, b:c\nd' }, '/x')).toBe('::error title=natsacl policy-violation::a, b:c%0Ad');
   });
 
