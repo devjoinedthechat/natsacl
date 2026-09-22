@@ -1,9 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <img src="assets/logo.svg" width="400" alt="natsacl">
+    <img src="assets/logo-light.svg" alt="" width="112" height="112">
   </picture>
 </p>
+
+<h1 align="center">natsacl</h1>
 
 <p align="center">
   <b>Least-privilege NATS permissions, compiled from your TypeScript.</b><br>

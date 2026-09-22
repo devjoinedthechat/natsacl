@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" width="112" height="112" fill="none" role="img" aria-label="natsacl">
+  <title>natsacl</title>
+  <!-- the permission boundary -->
+  <path d="M56 12 L92 26 V54 C92 80 74 96 56 102 C38 96 20 80 20 54 V26 Z" stroke="#1f2328" stroke-width="6" stroke-linejoin="round"/>
+  <!-- a subject: two tokens and the NATS wildcard -->
+  <circle cx="41" cy="58" r="5.5" fill="#1f2328"/>
+  <circle cx="56" cy="58" r="5.5" fill="#1f2328"/>
+  <path d="M66 46 L78 58 L66 70" stroke="#0f766e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
