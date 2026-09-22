@@ -21,6 +21,8 @@ export interface Analysis {
   readonly unusedShapes: readonly ShapeSpec[];
   /** Calls to stream-admin APIs, per file, for the lint. */
   readonly streamAdminCalls: readonly Location[];
+  /** KV opens that may create the bucket (no `bindOnly`, or `Kvm.create`). */
+  readonly kvCreateCalls: readonly { readonly location: Location; readonly bucket: string }[];
 }
 
 const INLINE_OVERRIDE = /natsacl-subject:\s*([^\n*]+)/;
@@ -43,6 +45,7 @@ export function analyze(ctx: ProgramContext, config: ResolvedConfig): Analysis {
   const streamsFromCode: StreamDef[] = [];
   const overridesUsed: { location: Location; patterns: readonly string[] }[] = [];
   const streamAdminCalls: Location[] = [];
+  const kvCreateCalls: { location: Location; bucket: string }[] = [];
   const hits = new Set<ShapeSpec>();
 
   for (const sf of ctx.sourceFiles) {
@@ -59,8 +62,17 @@ export function analyze(ctx: ProgramContext, config: ResolvedConfig): Analysis {
     visit(sf);
   }
 
-  function handleCall(call: ts.CallExpression, shape: ShapeSpec): void {
+  function handleCall(call: ts.CallExpression, declared: ShapeSpec): void {
     const location = locationOf(call);
+    let shape = declared;
+    if (shape.kind === 'kv') {
+      handleKv(call, shape, location);
+      return;
+    }
+    // A wrapper that is a core subscription unless a durable is named.
+    if (shape.kind === 'js-subscribe' && shape.whenNoDurable === 'subscribe' && shape.durable !== undefined && argExpression(ctx, call, shape.durable) === null) {
+      shape = { kind: 'subscribe', callee: shape.callee, ...(shape.subject !== undefined ? { subject: shape.subject } : {}) };
+    }
     const streamSet = shape.stream !== undefined ? literalSetAt(call, shape.stream) : [];
     const durableExpr = shape.durable !== undefined ? argExpression(ctx, call, shape.durable) : null;
     const durableSet = durableExpr ? (evaluator.literalSet(durableExpr) ?? []) : [];
@@ -155,6 +167,37 @@ export function analyze(ctx: ProgramContext, config: ResolvedConfig): Analysis {
     return false;
   }
 
+  /** `views.kv(name)`: the bucket name must be a literal; the grant set is per bucket. */
+  function handleKv(call: ts.CallExpression, shape: ShapeSpec, location: Location): void {
+    const expr = shape.subject === undefined ? null : argExpression(ctx, call, shape.subject);
+    if (!expr) {
+      unresolved.push({ kind: 'kv', location, expression: call.getText().slice(0, 120), reason: 'dynamic', detail: 'no bucket name argument', hint: 'pass the bucket name as a literal' });
+      return;
+    }
+    const names = evaluator.literalSet(expr);
+    if (!names || names.length === 0) {
+      unresolved.push({
+        kind: 'kv',
+        location,
+        expression: expr.getText().slice(0, 120),
+        reason: 'dynamic',
+        detail: 'the KV bucket name is not a literal; a bucket grant covers the whole bucket, so it cannot be widened',
+        hint: 'use a literal bucket name, or declare the calls with an override per bucket',
+      });
+      return;
+    }
+    const bindOnly = shape.durable !== undefined ? argExpression(ctx, call, shape.durable) : null;
+    const binds = shape.note === 'binds' || (bindOnly !== null && bindOnly.kind === ts.SyntaxKind.TrueKeyword);
+    for (const name of names) {
+      if (!/^[A-Za-z0-9_-]+$/.test(name.value)) {
+        unresolved.push({ kind: 'kv', location, expression: name.value, reason: 'unsupported-syntax', detail: `"${name.value}" is not a valid bucket name`, hint: 'bucket names are letters, digits, - and _' });
+        continue;
+      }
+      facts.push(fact(shape, `$KV.${name.value}.>`, location, name.via, 'literal', false, { value: `KV_${name.value}`, via: name.via }, undefined, false));
+      if (!binds) kvCreateCalls.push({ location, bucket: name.value });
+    }
+  }
+
   function fact(
     shape: ShapeSpec,
     subject: string,
@@ -203,7 +246,7 @@ export function analyze(ctx: ProgramContext, config: ResolvedConfig): Analysis {
   }
 
   const unusedShapes = config.shapes.filter((s) => !hits.has(s));
-  return { facts, unresolved, streamsFromCode, overridesUsed, unusedShapes, streamAdminCalls };
+  return { facts, unresolved, streamsFromCode, overridesUsed, unusedShapes, streamAdminCalls, kvCreateCalls };
 }
 
 type Literal = { readonly value: string; readonly via: readonly Location[] };

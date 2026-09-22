@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, cpSync } 
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { diffSummary, main, parseArgs } from '../src/cli.js';
+import { diffSummary, githubAnnotation, main, parseArgs } from '../src/cli.js';
 import { fixture } from './helpers.js';
 
 function run(argv: string[], cwd: string): Promise<{ code: number; out: string; err: string }> {
@@ -76,7 +76,7 @@ describe('cli', () => {
   it('compile refuses to write when subjects are unresolved', async () => {
     const r = await run(['compile', '--stdout'], fixture('errors'));
     expect(r.code).toBe(1);
-    expect(r.err).toContain('3 error(s): nothing written');
+    expect(r.err).toContain('4 error(s): nothing written');
     expect(r.out).toBe('');
   });
 
@@ -107,6 +107,13 @@ describe('cli', () => {
     expect((await run(['frobnicate'], work)).code).toBe(2);
     expect((await run(['compile', '--format', 'yaml'], work)).code).toBe(2);
     expect((await run(['compile', '--config', 'missing.json'], work)).code).toBe(2);
+  });
+
+  it('prints GitHub Actions annotations when asked, with repo-relative paths', async () => {
+    const r = await run(['lint', '--annotations'], work);
+    expect(r.out).toContain('::warning file=src/shared/base-subscriber.ts,line=11,col=11,title=natsacl consumer-wide-grant [alerts]::');
+    expect(r.out).toContain('::notice file=src/ingest/reading.service.ts,line=35,col=5,title=natsacl override-used::');
+    expect(githubAnnotation({ severity: 'error', code: 'policy-violation', message: 'a, b:c\nd' }, '/x')).toBe('::error title=natsacl policy-violation::a, b:c%0Ad');
   });
 
   it('diffSummary shows the first divergence', () => {

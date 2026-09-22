@@ -123,8 +123,9 @@ export class Evaluator {
     if (!value.ok) return null;
     const out: { value: string; via: readonly Location[] }[] = [];
     for (const s of value.strings) {
-      // A dynamic alternative (one subclass computing its durable) must not cost the literal ones their scoping.
-      if (s.chunks.some((c) => !('lit' in c))) continue;
+      // A dynamic alternative (one subclass computing its durable) must not cost the literal ones their
+      // scoping; a `${service}` placeholder is not dynamic — the deriver substitutes it per service.
+      if (s.chunks.some((c) => 'dyn' in c)) continue;
       out.push({ value: s.chunks.map(chunkText).join(''), via: s.via });
     }
     return out;

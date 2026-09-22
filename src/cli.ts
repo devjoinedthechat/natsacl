@@ -9,9 +9,10 @@ import { formatDiagnostic } from './render/markdown.js';
 const USAGE = `${GENERATOR} — least-privilege NATS permissions compiled from TypeScript
 
 Usage:
-  natsacl compile [--config <file>] [--format <fmt>] [--out <file>] [--stdout]
+  natsacl compile [--config <file>] [--format <fmt>] [--out <file>] [--stdout] [--quiet]
   natsacl check   [--config <file>] [--format <fmt>] [--out <file>]
   natsacl lint    [--config <file>] [--strict]
+  (--annotations / --no-annotations: GitHub Actions workflow commands; on by default under Actions)
   natsacl explain <service> <subject> [--config <file>]
   natsacl init    [--dir <path>]
 
@@ -51,7 +52,13 @@ export function parseArgs(argv: readonly string[]): Args {
   return { command: positional[0], positional: positional.slice(1), flags };
 }
 
-const BOOLEAN_FLAGS = new Set(['stdout', 'strict', 'quiet', 'help', 'version']);
+const BOOLEAN_FLAGS = new Set(['stdout', 'strict', 'quiet', 'help', 'version', 'annotations', 'no-annotations']);
+
+/** Annotations are on under GitHub Actions unless `--no-annotations`; `--annotations` forces them elsewhere. */
+function wantAnnotations(args: Args): boolean {
+  if (args.flags.has('no-annotations')) return false;
+  return args.flags.has('annotations') || process.env.GITHUB_ACTIONS === 'true';
+}
 
 export async function main(argv: readonly string[], io: { out: (s: string) => void; err: (s: string) => void } = { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) }): Promise<number> {
   const args = parseArgs(argv);
@@ -98,7 +105,7 @@ async function runCompile(args: Args, cwd: string, configPath: string | undefine
   const format = parseFormat(args.flags.get('format'));
   const result = await compile({ cwd, configPath, format });
   const { model, config } = result;
-  printDiagnostics(model, config.rootDir, io, args.flags.has('quiet'));
+  printDiagnostics(model, config.rootDir, io, args.flags.has('quiet'), wantAnnotations(args));
   if (hasErrors(model.diagnostics)) {
     io.err(`\n${countErrors(model)} error(s): nothing written. Fix the unresolved subjects above or declare them (README → Overrides).\n`);
     return 1;
@@ -135,7 +142,7 @@ async function runCompile(args: Args, cwd: string, configPath: string | undefine
 async function runLint(args: Args, cwd: string, configPath: string | undefined, io: { out: (s: string) => void; err: (s: string) => void }): Promise<number> {
   const config = await loadConfig({ cwd, configPath });
   const model = buildModel(config);
-  printDiagnostics(model, config.rootDir, io, false);
+  printDiagnostics(model, config.rootDir, io, false, wantAnnotations(args));
   const errors = countErrors(model);
   const warnings = model.diagnostics.filter((d) => d.severity === 'warning').length;
   io.out(`${errors} error(s), ${warnings} warning(s), ${model.diagnostics.length - errors - warnings} note(s)\n`);
@@ -198,11 +205,21 @@ function runInit(args: Args, cwd: string, io: { out: (s: string) => void; err: (
   return 0;
 }
 
-function printDiagnostics(model: Model, rootDir: string, io: { err: (s: string) => void }, quiet: boolean): void {
+function printDiagnostics(model: Model, rootDir: string, io: { out: (s: string) => void; err: (s: string) => void }, quiet: boolean, annotations: boolean): void {
   for (const d of model.diagnostics) {
     if (quiet && d.severity !== 'error') continue;
     io.err(formatDiagnostic(d, rootDir) + '\n');
+    if (annotations) io.out(githubAnnotation(d, process.cwd()) + '\n');
   }
+}
+
+/** A GitHub Actions workflow command, so the diagnostic lands on the pull request diff. */
+export function githubAnnotation(d: Diagnostic, cwd: string): string {
+  const level = d.severity === 'error' ? 'error' : d.severity === 'warning' ? 'warning' : 'notice';
+  const where = d.location ? `file=${relative(cwd, d.location.file).split('\\').join('/')},line=${d.location.line},col=${d.location.col},` : '';
+  const escape = (s: string): string => s.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  const title = escape(`natsacl ${d.code}${d.service ? ` [${d.service}]` : ''}`).replace(/,/g, '%2C').replace(/:/g, '%3A');
+  return `::${level} ${where}title=${title}::${escape(d.message)}`;
 }
 
 function countErrors(model: Model): number {

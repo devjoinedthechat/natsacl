@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { FactKind, StreamDef } from './model.js';
+import { isValidPattern } from './subjects.js';
 
 /** Where inside a call's arguments a value lives: an argument index, or a dotted path into an object-literal argument. */
 export type ArgRef = number | { readonly arg: number; readonly path: string };
@@ -26,6 +27,11 @@ export interface ShapeSpec {
   readonly stream?: ArgRef;
   readonly durable?: ArgRef;
   readonly mode?: 'pull' | 'push';
+  /**
+   * For a `js-subscribe` wrapper that is a core subscription when the call names no durable
+   * (no options argument, or no such property): treat those calls as `subscribe`.
+   */
+  readonly whenNoDurable?: 'subscribe';
   /** Free text for diagnostics. */
   readonly note?: string;
 }
@@ -93,6 +99,34 @@ export interface Config {
   };
   readonly maxExpansions?: number;
   readonly maxDepth?: number;
+  /**
+   * Build-time policy: a grant the code implies but policy forbids fails `compile` with the call
+   * sites, instead of being denied silently at runtime.
+   */
+  readonly policy?: {
+    readonly forbid?: readonly PolicyRule[];
+  };
+}
+
+export interface PolicyRule {
+  /** A subject pattern; any fact overlapping it is a violation. */
+  readonly subject: string;
+  /** Apply to publishing (publish, request, JetStream publish). Default true. */
+  readonly publish?: boolean;
+  /** Apply to consuming (subscribe, JetStream consumers, service endpoints). Default true. */
+  readonly subscribe?: boolean;
+  /** Services allowed to touch the subject anyway. */
+  readonly except?: readonly string[];
+  /** Shown in the diagnostic. */
+  readonly reason?: string;
+}
+
+export interface ResolvedPolicyRule {
+  readonly subject: string;
+  readonly publish: boolean;
+  readonly subscribe: boolean;
+  readonly except: readonly string[];
+  readonly reason: string | null;
 }
 
 export interface ResolvedService {
@@ -129,6 +163,7 @@ export interface ResolvedConfig {
   readonly lint: { readonly deadSubjects: 'error' | 'warning' | 'off'; readonly overBroad: 'error' | 'warning' | 'off' };
   readonly maxExpansions: number;
   readonly maxDepth: number;
+  readonly policy: { readonly forbid: readonly ResolvedPolicyRule[] };
 }
 
 export class ConfigError extends Error {
@@ -201,7 +236,7 @@ export function resolveConfig(raw: Config, options: { readonly rootDir: string; 
       nkey: s.nkey ?? null,
       entries,
       tsconfig: s.tsconfig ? abs(s.tsconfig) : tsconfig,
-      inboxPrefix: s.inboxPrefix ?? inboxPrefix,
+      inboxPrefix: expand(s.inboxPrefix ?? inboxPrefix, s.name),
       extraPublish: assertStringArray(s.extraPublish, `services[${s.name}].extraPublish`),
       extraSubscribe: assertStringArray(s.extraSubscribe, `services[${s.name}].extraSubscribe`),
       denyPublish: assertStringArray(s.denyPublish, `services[${s.name}].denyPublish`),
@@ -219,7 +254,7 @@ export function resolveConfig(raw: Config, options: { readonly rootDir: string; 
       nkey: null,
       entries: [],
       tsconfig,
-      inboxPrefix,
+      inboxPrefix: expand(inboxPrefix, name),
       extraPublish: [],
       extraSubscribe: [],
       denyPublish: [],
@@ -240,6 +275,15 @@ export function resolveConfig(raw: Config, options: { readonly rootDir: string; 
   const overrides = (raw.overrides ?? []).map((o) => {
     if (typeof o.file !== 'string' || typeof o.line !== 'number' || !o.subject) throw new ConfigError('overrides: each entry needs file, line and subject');
     return { file: abs(o.file), line: o.line, subject: o.subject };
+  });
+
+  const knownServices = new Set(services.map((s) => s.name));
+  const forbid: ResolvedPolicyRule[] = (raw.policy?.forbid ?? []).map((rule, i) => {
+    if (!rule || typeof rule.subject !== 'string' || !isValidPattern(rule.subject)) throw new ConfigError(`policy.forbid[${i}].subject must be a valid NATS subject pattern`);
+    for (const name of rule.except ?? []) {
+      if (!knownServices.has(name)) throw new ConfigError(`policy.forbid[${i}].except names unknown service "${name}" (services: ${[...knownServices].join(', ')})`);
+    }
+    return { subject: rule.subject, publish: rule.publish ?? true, subscribe: rule.subscribe ?? true, except: [...(rule.except ?? [])], reason: rule.reason ?? null };
   });
 
   return {
@@ -275,6 +319,7 @@ export function resolveConfig(raw: Config, options: { readonly rootDir: string; 
     },
     maxExpansions: raw.maxExpansions ?? 256,
     maxDepth: raw.maxDepth ?? 8,
+    policy: { forbid },
   };
 }
 

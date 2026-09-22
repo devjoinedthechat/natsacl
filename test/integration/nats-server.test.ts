@@ -154,6 +154,34 @@ describe.skipIf(!dockerAvailable)('permissions enforced by a real nats-server', 
     expect(sc.decode(reply.data)).toContain('TH-200');
   }, 30_000);
 
+  it('alerts-svc can bind, read, write and watch the KV bucket the admin provisioned; ingest cannot even bind', async () => {
+    const admin = await connectAs('admin', PASSWORDS.ADMIN_NATS_PASSWORD);
+    await admin.jetstream().views.kv('cfg', { history: 5 });
+
+    const alerts = await connectAs('alerts-svc', PASSWORDS.ALERTS_NATS_PASSWORD);
+    const kv = await alerts.jetstream({ timeout: 3000 }).views.kv('cfg', { bindOnly: true });
+    await kv.put('threshold', sc.encode('42'));
+    const entry = await kv.get('threshold');
+    expect(entry?.string()).toBe('42');
+    const watch = await kv.watch({ key: 'threshold' });
+    const iterator = watch[Symbol.asyncIterator]();
+    const seen = await Promise.race([iterator.next(), new Promise<{ done: true; value: undefined }>((r) => setTimeout(() => r({ done: true, value: undefined }), 4000))]);
+    expect(seen.done).toBe(false);
+    if (!seen.done) expect(seen.value.key).toBe('threshold');
+    watch.stop();
+    const keys = await kv.keys();
+    const collected: string[] = [];
+    for await (const k of keys) collected.push(k);
+    expect(collected).toEqual(['threshold']);
+    await kv.delete('threshold');
+    expect((await kv.get('threshold'))?.operation).toBe('DEL');
+
+    // Binding with bindOnly makes no server call; the refusal shows on the first read.
+    const ingest = await connectAs('ingest', PASSWORDS.INGEST_NATS_PASSWORD);
+    const foreign = await ingest.jetstream({ timeout: 2000 }).views.kv('cfg', { bindOnly: true });
+    await expect(foreign.get('threshold')).rejects.toThrow();
+  }, 40_000);
+
   it('ingest can pull-subscribe with its durable, publish its own subjects, and is refused a JetStream publish it never makes', async () => {
     const ingest = await connectAs('ingest', PASSWORDS.INGEST_NATS_PASSWORD);
     const js = ingest.jetstream({ timeout: 3000 });

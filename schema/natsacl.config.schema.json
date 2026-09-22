@@ -101,6 +101,28 @@
         "overBroad": { "enum": ["error", "warning", "off"] }
       }
     },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "forbid": {
+          "type": "array",
+          "description": "Grants the code must never imply. A violation fails compile with the call sites.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["subject"],
+            "properties": {
+              "subject": { "type": "string" },
+              "publish": { "type": "boolean", "default": true },
+              "subscribe": { "type": "boolean", "default": true },
+              "except": { "type": "array", "items": { "type": "string" }, "description": "Services allowed to touch the subject." },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "maxExpansions": { "type": "integer", "minimum": 1 },
     "maxDepth": { "type": "integer", "minimum": 1 }
   },
@@ -116,13 +138,14 @@
       "additionalProperties": false,
       "required": ["kind", "callee"],
       "properties": {
-        "kind": { "enum": ["publish", "request", "respond", "subscribe", "js-publish", "js-subscribe", "js-consumer-add", "js-consumer-get", "js-consumer-info", "js-consumer-delete", "js-stream-admin", "js-stream-info", "service-endpoint"] },
+        "kind": { "enum": ["publish", "request", "respond", "subscribe", "js-publish", "js-subscribe", "js-consumer-add", "js-consumer-get", "js-consumer-info", "js-consumer-delete", "js-stream-admin", "js-stream-info", "kv", "service-endpoint"] },
         "callee": { "type": "string" },
         "receiverTypes": { "type": "array", "items": { "type": "string" }, "description": "Type names the receiver must be, extend or implement. Empty: a free function. Omitted: any receiver." },
         "subject": { "$ref": "#/definitions/argRef" },
         "stream": { "$ref": "#/definitions/argRef" },
         "durable": { "$ref": "#/definitions/argRef" },
         "mode": { "enum": ["pull", "push"] },
+        "whenNoDurable": { "const": "subscribe", "description": "A js-subscribe wrapper that is a core subscription when the call names no durable." },
         "note": { "type": "string" }
       }
     }

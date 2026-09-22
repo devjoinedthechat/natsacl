@@ -75,7 +75,12 @@ function buildPermissions(
   const inbox = `${service.inboxPrefix}.>`;
 
   for (const raw of facts) {
-    const fact: SubjectFact = raw.subject.includes(SERVICE_PLACEHOLDER) ? { ...raw, subject: raw.subject.replaceAll(SERVICE_PLACEHOLDER, service.name) } : raw;
+    const fact: SubjectFact = {
+      ...raw,
+      subject: raw.subject.replaceAll(SERVICE_PLACEHOLDER, service.name),
+      ...(raw.durable ? { durable: raw.durable.replaceAll(SERVICE_PLACEHOLDER, service.name) } : {}),
+      ...(raw.stream ? { stream: raw.stream.replaceAll(SERVICE_PLACEHOLDER, service.name) } : {}),
+    };
     const prov: Provenance = { kind: fact.kind, subject: fact.subject, location: fact.location, via: fact.via, origin: fact.origin };
     switch (fact.kind) {
       case 'publish':
@@ -102,6 +107,27 @@ function buildPermissions(
         break;
       case 'js-stream-admin':
         break;
+      case 'kv': {
+        // Verified against nats-server 2.10 with the official client (test/integration): put/get/
+        // delete publish to the bucket subjects, get uses direct get (or the message API when the
+        // bucket disallows it), watch/keys/history run server-named ordered consumers on the bucket.
+        jetstreamUsed = true;
+        const stream = fact.stream ?? `KV_${fact.subject.split('.')[1]}`;
+        publish.add(fact.subject, prov);
+        publish.add(`$JS.API.STREAM.INFO.${stream}`, prov);
+        publish.add(`$JS.API.DIRECT.GET.${stream}.>`, prov);
+        publish.add(`$JS.API.STREAM.MSG.GET.${stream}`, prov);
+        // Watches and key listings run ordered consumers. Depending on client and server version the
+        // client creates them through the bare API subject (no name, no filter) or through a
+        // server-named consumer with the key filter under the bucket; both are needed.
+        publish.add(`$JS.API.CONSUMER.CREATE.${stream}`, prov);
+        publish.add(`$JS.API.CONSUMER.CREATE.${stream}.*.${fact.subject}`, prov);
+        publish.add(`$JS.API.CONSUMER.INFO.${stream}.*`, prov);
+        publish.add(`$JS.API.CONSUMER.MSG.NEXT.${stream}.*`, prov);
+        publish.add(`$JS.API.CONSUMER.DELETE.${stream}.*`, prov);
+        subscribe.add(inbox, prov);
+        break;
+      }
       case 'js-stream-info':
         jetstreamUsed = true;
         subscribe.add(inbox, prov);
@@ -121,6 +147,18 @@ function buildPermissions(
             const filter = fact.subject === '>' || fact.subject === NO_SUBJECT ? null : fact.subject;
             publish.add(filter ? `$JS.API.CONSUMER.CREATE.${base}.${filter}` : `$JS.API.CONSUMER.CREATE.${base}`, prov);
             if (config.jetstream.api === 'legacy') publish.add(`$JS.API.CONSUMER.DURABLE.CREATE.${base}`, prov);
+            // An unnamed (ephemeral or ordered) consumer is created through the bare API subject,
+            // which carries no filter: the grant is per stream, and the lint says so.
+            if (!fact.namesConsumer) {
+              publish.add(`$JS.API.CONSUMER.CREATE.${stream}`, prov);
+              diagnostics.add({
+                severity: 'warning',
+                code: 'consumer-wide-grant',
+                message: `${fact.kind} on "${fact.subject}": an unnamed consumer is created through "$JS.API.CONSUMER.CREATE.${stream}", which admits any filter on the stream; name the consumer to scope the grant to its filter`,
+                location: fact.location,
+                service: service.name,
+              });
+            }
           }
           if (fact.kind !== 'js-consumer-delete') {
             publish.add(`$JS.API.CONSUMER.INFO.${base}`, prov);

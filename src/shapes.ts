@@ -73,6 +73,14 @@ export const DEFAULT_SHAPES: readonly ShapeSpec[] = [
   { kind: 'js-stream-info', callee: 'find', receiverTypes: ['StreamAPI'] },
   { kind: 'js-stream-info', callee: 'getAccountInfo', receiverTypes: ['JetStreamManager'] },
 
+  // ─── Key-Value ─────────────────────────────────────────────────────────────
+  // `subject` is the bucket name. `views.kv(name)` creates the bucket unless `bindOnly` is set;
+  // `Kvm.open` binds, `Kvm.create` creates. Creation is stream administration, which a service
+  // does not get: the lint reports it.
+  { kind: 'kv', callee: 'kv', receiverTypes: ['Views'], subject: 0, durable: { arg: 1, path: 'bindOnly' }, note: 'binds only with { bindOnly: true }' },
+  { kind: 'kv', callee: 'open', receiverTypes: ['Kvm'], subject: 0, note: 'binds' },
+  { kind: 'kv', callee: 'create', receiverTypes: ['Kvm'], subject: 0, note: 'creates' },
+
   // ─── Services API ──────────────────────────────────────────────────────────
   { kind: 'service-endpoint', callee: 'addEndpoint', receiverTypes: ['Service', 'ServiceGroup'], subject: { arg: 1, path: 'subject' } },
 ];
@@ -91,6 +99,11 @@ export function parseJsDocShape(text: string, callee: string): ShapeSpec | null 
     if (key === 'mode') {
       if (value !== 'pull' && value !== 'push') return null;
       spec.mode = value;
+      continue;
+    }
+    if (key === 'whenNoDurable') {
+      if (value !== 'subscribe') return null;
+      spec.whenNoDurable = value;
       continue;
     }
     if (key !== 'subject' && key !== 'stream' && key !== 'durable') return null;
@@ -122,6 +135,7 @@ const FACT_KINDS = new Set([
   'js-consumer-delete',
   'js-stream-admin',
   'js-stream-info',
+  'kv',
   'service-endpoint',
 ]);
 

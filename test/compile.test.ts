@@ -62,26 +62,62 @@ describe('basic fixture: two services sharing a library', () => {
   it('pairs each subclass subject with its own durable; a computed durable falls back to * for that one only', () => {
     expect(alerts.permissions.publishAllow).toEqual([
       '$JS.ACK.TELEMETRY.*.>',
+      '$JS.API.CONSUMER.CREATE.KV_cfg',
+      '$JS.API.CONSUMER.CREATE.KV_cfg.*.$KV.cfg.>',
       '$JS.API.CONSUMER.CREATE.TELEMETRY.*.ALERTS.escalated',
       '$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-acks.ALERTS.acknowledged',
+      '$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-digest.ALERTS.digest',
       '$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-incidents.INCIDENTS.>',
+      '$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-reopened.ALERTS.reopened',
       '$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-thresholds.ALERTS.cleared',
       '$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-thresholds.ALERTS.raised',
+      '$JS.API.CONSUMER.DELETE.KV_cfg.*',
+      '$JS.API.CONSUMER.INFO.KV_cfg.*',
       '$JS.API.CONSUMER.INFO.TELEMETRY.*',
+      '$JS.API.CONSUMER.MSG.NEXT.KV_cfg.*',
       '$JS.API.CONSUMER.MSG.NEXT.TELEMETRY.*',
+      '$JS.API.DIRECT.GET.KV_cfg.>',
       '$JS.API.INFO',
+      '$JS.API.STREAM.INFO.KV_cfg',
       '$JS.API.STREAM.INFO.TELEMETRY',
       '$JS.API.STREAM.LIST',
+      '$JS.API.STREAM.MSG.GET.KV_cfg',
       '$JS.API.STREAM.NAMES',
+      '$KV.cfg.>',
       'INCIDENTS.closed',
       'INCIDENTS.opened',
     ]);
-    expect(alerts.permissions.subscribeAllow).toEqual(['_INBOX.>', 'CATALOG.LOOKUP', 'alerts.TASKS']);
+    expect(alerts.permissions.subscribeAllow).toEqual(['_INBOX.>', 'ALERTS.muted', 'CATALOG.LOOKUP', 'alerts.TASKS']);
     expect(alerts.permissions.allowResponses).toBe(true);
     expect(alerts.user).toBe('alerts-svc');
     const wide = model.diagnostics.filter((d) => d.code === 'consumer-wide-grant');
     expect(wide.map((d) => d.message)).toEqual([expect.stringContaining('"ALERTS.escalated"')]);
     expect(alerts.permissions.publishAllow).not.toContain('$JS.API.CONSUMER.CREATE.TELEMETRY.*.ALERTS.acknowledged');
+  });
+
+  it('a KV bucket bound with bindOnly gets the bucket grant set and no create warning', () => {
+    expect(alerts.permissions.publishAllow).toContain('$KV.cfg.>');
+    expect(codes(model, 'warning')).not.toContain('kv-create-in-service');
+    const { model: creating } = modelFor('basic', { overrides: [] });
+    void creating;
+  });
+
+  it('a dual-mode wrapper is a core subscription without a durable and a JetStream one with', () => {
+    expect(alerts.permissions.subscribeAllow).toContain('ALERTS.muted');
+    expect(alerts.permissions.publishAllow.some((g) => g.includes('ALERTS.muted'))).toBe(false);
+    expect(alerts.permissions.publishAllow).toContain('$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-reopened.ALERTS.reopened');
+  });
+
+  it('${service} is substituted in durable names too', () => {
+    expect(alerts.permissions.publishAllow).toContain('$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-digest.ALERTS.digest');
+    expect(alerts.permissions.publishAllow).not.toContain('$JS.API.CONSUMER.CREATE.TELEMETRY.*.ALERTS.digest');
+  });
+
+  it('an inbox prefix template isolates replies per service and silences shared-inbox', () => {
+    const { model: m } = modelFor('basic', { inboxPrefix: '_INBOX_${service}' });
+    expect(user(m, 'ingest').permissions.subscribeAllow).toEqual(['_INBOX_ingest.>']);
+    expect(user(m, 'alerts').permissions.subscribeAllow).toContain('_INBOX_alerts.>');
+    expect(codes(m, 'info')).not.toContain('shared-inbox');
   });
 
   it('a @natsacl service-name declaration expands to each service name', () => {
@@ -91,9 +127,9 @@ describe('basic fixture: two services sharing a library', () => {
     expect(facts.map((f) => f.subject)).toEqual(['${service}.TASKS']);
   });
 
-  it('never grants consumer DELETE to a named durable', () => {
+  it('never grants consumer DELETE to a named durable (KV watches, being unnamed, are the exception)', () => {
     for (const s of model.services) {
-      expect(s.permissions.publishAllow.some((g) => g.startsWith('$JS.API.CONSUMER.DELETE'))).toBe(false);
+      expect(s.permissions.publishAllow.filter((g) => g.startsWith('$JS.API.CONSUMER.DELETE')).every((g) => g.startsWith('$JS.API.CONSUMER.DELETE.KV_'))).toBe(true);
     }
   });
 
@@ -122,8 +158,8 @@ describe('basic fixture: two services sharing a library', () => {
   it('reports dead subjects and the override, but nothing else', () => {
     const counts: Record<string, number> = {};
     for (const d of model.diagnostics.filter((d) => d.severity === 'warning')) counts[d.code] = (counts[d.code] ?? 0) + 1;
-    expect(counts).toEqual({ 'consumer-wide-grant': 1, 'no-publisher': 3, 'no-subscriber': 9 });
-    expect(codes(model, 'info')).toEqual(['override-used']);
+    expect(counts).toEqual({ 'consumer-wide-grant': 1, 'no-publisher': 6, 'no-subscriber': 9 });
+    expect(codes(model, 'info').sort()).toEqual(['override-used', 'shared-inbox']);
   });
 
   it('explains a grant back to the code', () => {
@@ -189,9 +225,11 @@ describe('basic fixture: two services sharing a library', () => {
     const { model: m } = modelFor('basic', { streams: [{ name: 'TELEMETRY', subjects: ['SENSORS.>'] }] });
     const errors = m.diagnostics.filter((d) => d.code === 'filter-not-in-stream');
     expect(errors.map((d) => d.message)).toEqual([
+      expect.stringContaining('"ALERTS.reopened"'),
       expect.stringContaining('"INCIDENTS.>"'),
       expect.stringContaining('"ALERTS.acknowledged"'),
       expect.stringContaining('"ALERTS.cleared"'),
+      expect.stringContaining('"ALERTS.digest"'),
       expect.stringContaining('"ALERTS.escalated"'),
       expect.stringContaining('"ALERTS.raised"'),
     ]);
@@ -206,7 +244,7 @@ describe('basic fixture: two services sharing a library', () => {
     const { model: m } = modelFor('basic', { streams: [{ name: 'OTHER', subjects: ['SENSORS.>'] }] });
     const errors = m.diagnostics.filter((d) => d.code === 'filter-not-in-stream');
     // One diagnostic per call site and service: the shared base call is reported once for each service.
-    expect(errors.length).toBe(4);
+    expect(errors.length).toBe(5);
     expect(errors.every((d) => d.message.includes('names stream "TELEMETRY" but no such stream is provisioned'))).toBe(true);
   });
 
@@ -214,6 +252,48 @@ describe('basic fixture: two services sharing a library', () => {
     const { model: m } = modelFor('basic', { streams: undefined });
     expect(user(m, 'alerts').permissions.publishAllow).toContain('$JS.API.CONSUMER.CREATE.TELEMETRY.alerts-incidents.INCIDENTS.>');
     expect(codes(m, 'warning')).not.toContain('stream-unknown');
+  });
+});
+
+describe('policy', () => {
+  it('a publish the policy reserves for another service is an error at the call site', () => {
+    const { model } = modelFor('basic', { policy: { forbid: [{ subject: 'ALERTS.>', publish: true, subscribe: false, except: ['alerts'], reason: 'alerts owns its namespace' }] } });
+    const violations = model.diagnostics.filter((d) => d.code === 'policy-violation');
+    expect(violations).toHaveLength(1);
+    expect(violations[0]!.severity).toBe('error');
+    expect(violations[0]!.service).toBe('ingest');
+    expect(violations[0]!.message).toContain('ingest publishes "ALERTS.raised"');
+    expect(violations[0]!.message).toContain('alerts owns its namespace');
+    expect(violations[0]!.location?.file.endsWith('src/ingest/reading.service.ts')).toBe(true);
+  });
+
+  it('a JetStream consumer on a forbidden filter is caught as consumption', () => {
+    const { model } = modelFor('basic', { policy: { forbid: [{ subject: 'SENSORS.reading', publish: false, subscribe: true }] } });
+    const violations = model.diagnostics.filter((d) => d.code === 'policy-violation');
+    expect(violations.map((d) => `${d.service}: ${d.message.split(',')[0]}`)).toEqual(['ingest: ingest consumes "SENSORS.reading"']);
+  });
+
+  it('except lists, extra lists and ${service} facts are honoured', () => {
+    const { model } = modelFor('basic', {
+      services: [
+        { name: 'ingest', entry: 'src/ingest/main.ts', extraPublish: ['KEYS.rotate'] },
+        { name: 'alerts', entry: 'src/alerts/main.ts' },
+      ],
+      policy: {
+        forbid: [
+          { subject: 'INCIDENTS.>', except: ['alerts'] },
+          { subject: 'KEYS.>', except: ['alerts'] },
+          { subject: 'alerts.TASKS', publish: false, subscribe: true },
+        ],
+      },
+    });
+    const violations = model.diagnostics.filter((d) => d.code === 'policy-violation').map((d) => d.message);
+    expect(violations).toEqual([expect.stringContaining('ingest publishes (extraPublish) "KEYS.rotate"'), expect.stringContaining('alerts consumes "alerts.TASKS"')]);
+  });
+
+  it('a clean policy adds no diagnostics', () => {
+    const { model } = modelFor('basic', { policy: { forbid: [{ subject: 'PAYROLL.>' }] } });
+    expect(codes(model, 'error')).toEqual([]);
   });
 });
 
@@ -231,21 +311,24 @@ describe('errors fixture: what the analyser refuses', () => {
     expect(model.services.map((s) => s.service)).toEqual(['app']);
   });
 
-  it('reports partial tokens, whole-subject parameters without callers, and opaque values, each at the call site', () => {
+  it('reports partial tokens, whole-subject parameters without callers, opaque values and dynamic KV buckets, each at the call site', () => {
     const errors = model.diagnostics.filter((d) => d.severity === 'error');
-    expect(errors.map((d) => d.location?.line)).toEqual([7, 11, 15]);
-    expect(errors[0]!.message).toContain('mixes literal text and a dynamic value inside one token');
-    expect(errors[1]!.message).toContain('nothing in the program calls it');
-    expect(errors[2]!.message).toContain('process.env.SUBJECT');
+    expect(errors.map((d) => `${d.location?.file.split('/').pop()}:${d.location?.line}`)).toEqual(['kv.ts:5', 'main.ts:7', 'main.ts:11', 'main.ts:15']);
+    expect(errors[0]!.message).toContain('KV bucket name is not a literal');
+    expect(codes(model, 'warning')).toContain('kv-create-in-service');
+    expect(user(model, 'app').permissions.publishAllow).toContain('$KV.sessions.>');
+    expect(errors[1]!.message).toContain('mixes literal text and a dynamic value inside one token');
+    expect(errors[2]!.message).toContain('nothing in the program calls it');
+    expect(errors[3]!.message).toContain('process.env.SUBJECT');
   });
 
   it('still derives every resolvable grant', () => {
-    expect(user(model, 'app').permissions.publishAllow).toEqual(['HEALTH.ok']);
+    expect(user(model, 'app').permissions.publishAllow.filter((g) => !g.startsWith('$'))).toEqual(['HEALTH.ok']);
   });
 
   it('widenPartialTokens turns the partial token into "*" and reports the widening', () => {
     const { model: widened } = modelFor('errors', { widenPartialTokens: true });
-    expect(user(widened, 'app').permissions.publishAllow).toEqual(['*', 'HEALTH.ok']);
+    expect(user(widened, 'app').permissions.publishAllow.filter((g) => !g.startsWith('$'))).toEqual(['*', 'HEALTH.ok']);
     expect(codes(widened, 'warning')).toContain('widened');
     expect(codes(widened, 'warning')).toContain('over-broad');
   });
@@ -258,8 +341,8 @@ describe('errors fixture: what the analyser refuses', () => {
         { file: 'src/main.ts', line: 7, subject: 'DEVICE-ish' },
       ],
     });
-    expect(codes(fixed, 'error')).toEqual([]);
-    expect(user(fixed, 'app').permissions.publishAllow).toEqual(['DEVICE-ish', 'DYNAMIC.a', 'DYNAMIC.b', 'ENV.>', 'HEALTH.ok']);
+    expect(codes(fixed, 'error')).toEqual(['unresolved-subject']);
+    expect(user(fixed, 'app').permissions.publishAllow.filter((g) => !g.startsWith('$'))).toEqual(['DEVICE-ish', 'DYNAMIC.a', 'DYNAMIC.b', 'ENV.>', 'HEALTH.ok']);
     expect(codes(fixed, 'info').filter((c) => c === 'override-used')).toHaveLength(3);
   });
 });

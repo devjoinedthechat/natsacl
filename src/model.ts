@@ -24,6 +24,7 @@ export type FactKind =
   | 'js-consumer-delete'
   | 'js-stream-admin'
   | 'js-stream-info'
+  | 'kv'
   | 'service-endpoint';
 
 /** How a subject value was arrived at; the deriver reports `widened` and `override` in the output. */
@@ -123,6 +124,7 @@ export interface Diagnostic {
 
 export type DiagnosticCode =
   | 'unresolved-subject'
+  | 'policy-violation'
   | 'invalid-subject'
   | 'filter-not-in-stream'
   | 'publish-not-in-stream'
@@ -134,7 +136,9 @@ export type DiagnosticCode =
   | 'override-used'
   | 'consumer-wide-grant'
   | 'stream-admin-in-service'
+  | 'kv-create-in-service'
   | 'over-broad'
+  | 'shared-inbox'
   | 'shape-unused'
   | 'entry-missing';
 

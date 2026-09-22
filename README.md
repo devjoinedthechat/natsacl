@@ -18,13 +18,9 @@
   <img src="https://img.shields.io/badge/runtime%20deps-none-0f766e" alt="no runtime dependencies">
 </p>
 
-<p align="center">
-  <img src="assets/demo.svg" width="780" alt="natsacl compile writes the permissions file, check confirms it matches the code, explain traces a grant to the call site">
-</p>
-
 ---
 
-**Contents** · [Why](#why) · [Highlights](#highlights) · [Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [What a consumer needs](#what-a-consumer-needs) · [Configuration](#configuration) · [Your own wrappers](#declaring-your-own-wrappers) · [Output formats](#output-formats) · [CLI](#cli) · [Diagnostics](#diagnostics) · [CI](#ci) · [Validation](#validation-on-a-real-codebase) · [Comparison](#comparison) · [Limits](#limits-stated-plainly) · [Roadmap](#roadmap) · [Contributing](#contributing)
+**Contents** · [Why](#why) · [Highlights](#highlights) · [Install](#install) · [Quick start](#quick-start) · [How it works](#how-it-works) · [What a consumer needs](#what-a-consumer-needs) · [Configuration](#configuration) · [Your own wrappers](#declaring-your-own-wrappers) · [Policy](#policy) · [Output formats](#output-formats) · [CLI](#cli) · [Diagnostics](#diagnostics) · [CI](#ci) · [Validation](#validation-on-a-real-codebase) · [Comparison](#comparison) · [Limits](#limits-stated-plainly) · [Contributing](#contributing)
 
 ## Why
 
@@ -41,8 +37,9 @@ It closes a second, subtler gap. JetStream does not enforce subscribe permission
 - **Wrappers need no configuration.** A parameter that carries a subject is evaluated at every call site of the wrapper, including calls through the interfaces and base classes it implements. An abstract `subject` property is evaluated at every subclass that initialises it.
 - **Per-service attribution by reachability.** A fact belongs to a service when the file performing the call, and every file its value travelled through, is reachable from that service's entry. A shared base class is granted only to the services whose subclasses use it.
 - **Never over-grants.** A dynamic token becomes `*`, never `>`. A dynamic fragment inside a token is an error with the fix named. A subject with no literal part is refused.
-- **JetStream done properly.** Consumer grants scoped to the filter and, when the code names it, the durable; stream inference from provisioned streams; a stream named in code is verified to exist and to carry the filter.
+- **JetStream done properly.** Consumer grants scoped to the filter and, when the code names it, the durable; stream inference from provisioned streams; a stream named in code is verified to exist and to carry the filter; KV buckets get exactly the grants the client's put, get, watch and keys need.
 - **Five outputs.** `nats-server` config, `nsc` script, JWT permission JSON, a JSON model with provenance, a Markdown review.
+- **Policy at build time.** `policy.forbid` fails `compile` with the call sites when the code implies a grant a service must never hold, instead of denying it silently at runtime.
 - **Every grant is explainable.** `natsacl explain <user> <subject>` prints the call sites and the chain of declarations behind it.
 - **Verified against a real broker.** The test suite loads the generated permissions into `nats-server` and proves the allows and the denies with the official client.
 - **Zero runtime dependencies** beyond your own `typescript`.
@@ -147,6 +144,8 @@ this.nc.publish(buildLegacySubject(), payload);
 | stream named in code | verified to exist and to carry the filter; otherwise an error and no grant | |
 | durable not a literal | `*` for the consumer token, reported as `consumer-wide-grant` | |
 | unnamed (ephemeral / ordered) consumer | `*` for the consumer token, plus `CONSUMER.DELETE` | |
+| `js.views.kv('cfg', { bindOnly: true })` / `kvm.open('cfg')` | `$KV.cfg.>`, `$JS.API.STREAM.INFO.KV_cfg`, `$JS.API.DIRECT.GET.KV_cfg.>`, `$JS.API.STREAM.MSG.GET.KV_cfg`, and `CONSUMER.CREATE/INFO/MSG.NEXT/DELETE` on `KV_cfg` for watches (server-named ordered consumers) | `_INBOX.>` |
+| `js.views.kv('cfg')` without `bindOnly` / `kvm.create('cfg')` | as above, plus a `kv-create-in-service` warning: creating the bucket is stream administration | |
 | `jsm.streams.info('S')`, `streams.list()`, `streams.names()`, `getAccountInfo()` | `$JS.API.STREAM.INFO.S`, or `$JS.API.STREAM.LIST` and `$JS.API.STREAM.NAMES`; `$JS.API.INFO` | `_INBOX.>` |
 | `jsm.streams.add(…)` inside a service | **nothing** — reported as `stream-admin-in-service`; streams are provisioned by the `admin` user | |
 
@@ -161,19 +160,20 @@ Set `jetstream.api: "legacy"` to also grant `$JS.API.CONSUMER.DURABLE.CREATE` fo
 | `tsconfig` | The program to analyse; a solution-style root with `references` loads every referenced project | `tsconfig.json` |
 | `services[]` | `{ name, entry, user?, passwordEnv?, nkey?, tsconfig?, inboxPrefix?, extraPublish?, extraSubscribe?, denyPublish?, denySubscribe? }`; an `nkey` user is rendered without a password | single service |
 | `userTemplate`, `passwordEnvTemplate` | `${service}` / `${SERVICE}` expand to the name | `${service}`, `${SERVICE}_NATS_PASSWORD` |
-| `shapes.extend[]` | Your wrappers: `{ kind, callee, receiverTypes?, subject?, stream?, durable?, mode? }` | built-in table |
+| `shapes.extend[]` | Your wrappers: `{ kind, callee, receiverTypes?, subject?, stream?, durable?, mode?, whenNoDurable? }` | built-in table |
 | `shapes.replace[]` | Drop the built-in table | |
 | `streams` | `"from-code"`, `[{ name, subjects }]`, or `{ file }` (accepts `nats stream info -j` output) | none |
 | `jetstream.api` | `modern` (≥ 2.9) or `legacy` | `modern` |
 | `jetstream.consumerScoping` | `auto`: scope to literal durables; `wildcard`: always `*` | `auto` |
 | `jetstream.allowConsumerDelete` | `true`, `false`, or `auto` (delete calls and ephemeral consumers) | `auto` |
-| `inboxPrefix` | Reply inbox prefix (`inboxPrefix` client option) | `_INBOX` |
+| `inboxPrefix` | Reply inbox prefix; `${service}` expands per service (set the client's `inboxPrefix` option to match) | `_INBOX` |
 | `widenPartialTokens` | Turn `DEVICE-${id}` into `*` instead of failing | `false` |
 | `overrides[]` | `{ file, line, subject }` for call sites the evaluator cannot resolve | |
 | `external.publishers` / `external.subscribers` | Subjects handled outside this program, to silence dead-subject lint | |
 | `admin` | `{ user, passwordEnv? }` — an unrestricted user for provisioning | none |
 | `output` | `{ format, file, account? }`; `account` wraps users in `accounts { … }` | `server`, stdout |
 | `lint.deadSubjects`, `lint.overBroad` | `error` / `warning` / `off` | `warning` |
+| `policy.forbid[]` | `{ subject, publish?, subscribe?, except?, reason? }` — grants the code must never imply; see [Policy](#policy) | |
 | `maxExpansions`, `maxDepth` | Bounds on enumeration and inlining | `256`, `8` |
 
 ## Declaring your own wrappers
@@ -200,6 +200,13 @@ or in config:
 ] } }
 ```
 
+A wrapper that is a JetStream subscription when a durable is named and a core subscription otherwise declares that too, so its core subscriptions do not receive JetStream API grants:
+
+```ts
+/** @natsacl js-subscribe subject=0 durable=2.durableName stream=2.stream whenNoDurable=subscribe */
+on(subject: string, handler: Handler, options?: { durableName?: string; stream?: string }): void { /* … */ }
+```
+
 `receiverTypes` match the receiver's declared type, anything it extends, anything it implements, and the owner of the called member. A shape that matches no call is reported (`shape-unused`) so a typo cannot silently drop a whole class of grants. A declared wrapper is opaque: the client calls inside its body are what the declaration stands for and are not analysed again.
 
 ### The running service's name
@@ -216,6 +223,40 @@ nc.subscribe(`${runtime.serviceName}.TASKS`);   // ingest → ingest.TASKS, aler
 ```
 
 The tag goes on a property, getter, method, function, variable or object-literal member. `${service}` is also accepted in `overrides`, `extraPublish`, `extraSubscribe` and the deny lists.
+
+## Policy
+
+The compiler makes the permissions follow the code. Policy decides what the code may not do, and fails the build when it does:
+
+```jsonc
+{
+  "policy": {
+    "forbid": [
+      { "subject": "KEYS.>",     "except": ["vault"],  "reason": "key material leaves only through vault" },
+      { "subject": "AUDIT.>",    "publish": false,     "reason": "audit is read by the archiver only", "except": ["archiver"] },
+      { "subject": "*.TASKS",    "subscribe": true, "publish": false, "except": ["worker"] }
+    ]
+  }
+}
+```
+
+A rule is checked against what each service's code does — publishing (`publish`, `request`, JetStream publish) and consuming (`subscribe`, JetStream consumers, service endpoints) — not against the rendered file, so a JetStream consumer on a forbidden filter is caught even though it appears in the permissions as a `$JS.API.CONSUMER.CREATE…` grant. `extraPublish` and `extraSubscribe` entries are checked too. A violation is an error with the call site; `compile` writes nothing.
+
+Policy complements deny lists rather than replacing them: a deny list is enforced by the server at runtime, a policy rule stops the change from being merged.
+
+### Isolating reply inboxes
+
+Every user needs to subscribe to its reply inbox, and by default that is `_INBOX.>` — the same prefix for everyone in the account, so any user can read any other user's replies. To isolate them, give each service its own prefix and tell the client:
+
+```jsonc
+{ "inboxPrefix": "_INBOX_${service}" }
+```
+
+```ts
+const nc = await connect({ servers, inboxPrefix: `_INBOX_${process.env.SERVICE_NAME}` });
+```
+
+`natsacl` reports `shared-inbox` once per compile while the prefix is shared. It does not change the default, because the permissions file and the client have to agree.
 
 ## Output formats
 
@@ -244,6 +285,7 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 | Code | Severity | Meaning |
 |---|---|---|
 | `unresolved-subject` | error | The evaluator could not pin the subject down; the message names the reason and the fix. |
+| `policy-violation` | error | The code implies a grant that `policy.forbid` rules out for this service. No file is written. |
 | `filter-not-in-stream` | error | A consumer filter no provisioned stream carries, or a stream named in code that is not provisioned. No grant is emitted. |
 | `entry-missing` | error | A service entry is not part of the program. |
 | `publish-not-in-stream` | warning | A JetStream publish no stream captures; it would time out with no responders. |
@@ -251,7 +293,9 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 | `consumer-wide-grant` | warning | The durable name is not a literal, so consumer grants use `*`. |
 | `stream-unknown` | warning | No stream named in code and none configured; the stream token is `*`. |
 | `stream-admin-in-service` | warning | A service creates or deletes streams; it receives no stream grants. |
+| `kv-create-in-service` | warning | A KV bucket is opened without `bindOnly`, so the client would create it; provision it from the admin user instead. |
 | `over-broad` | warning | A grant with a wildcard in the first token. |
+| `shared-inbox` | info | Every user subscribes to the same reply inbox prefix; set `inboxPrefix` to `_INBOX_${service}` to isolate replies. |
 | `widened` | warning | A partial token was widened under `widenPartialTokens`. |
 | `shape-unused` | warning | A declared shape matched nothing. |
 | `override-used` | info | A subject came from an override rather than the code. |
@@ -262,6 +306,8 @@ Exit codes: `0` ok · `1` unresolved subjects, drift, uncovered filters, or warn
 - run: npx natsacl check        # permissions file matches the code
 - run: npx natsacl lint --strict
 ```
+
+Under GitHub Actions every diagnostic is also emitted as a workflow command, so unresolved subjects, policy violations and uncovered filters appear as annotations on the pull request diff at the call site. Pass `--annotations` to get them elsewhere, or `--no-annotations` to suppress them.
 
 Pair it with the stream provisioning you already have: point `streams` at `nats stream info -j` output captured from the environment, or at the code that calls `jsm.streams.add`, and the coverage check runs against the same definitions the server will.
 
@@ -291,16 +337,8 @@ Before release the compiler was run over a 14-service TypeScript monorepo (a sha
 - **A dynamic token is `*`, not `>`.** `` `LOGS.${path}` `` where `path` contains dots is under-granted; a runtime permission error will tell you, and an override fixes it. The compiler never widens silently.
 - **Consumer names cannot be scoped per user** when they are not literals: JetStream API subjects carry the consumer name as one token, so `INFO`/`NEXT`/`ACK` fall back to `*` for that stream.
 - **A permission pattern containing `*` also admits the literal token `*`**, so `$JS.API.CONSUMER.CREATE.S.D.SENSORS.*` allows creating a consumer with filter `SENSORS.anything` as well as `SENSORS.*`. This is inherent to NATS permissions.
-- **KV and Object Store** buckets (`$KV.>`, `$O.>`) are not yet derived; add them with `extraPublish`/`extraSubscribe`.
+- **Object Store** buckets (`$O.>`) are not derived; add them with `extraPublish`/`extraSubscribe`. KV buckets are, from literal bucket names only.
 - **Operator mode** output is an `nsc` script and JWT JSON; `natsacl` does not mint or push JWTs.
-
-## Roadmap
-
-- KV and Object Store subject derivation from `views.kv()` / `views.os()` calls.
-- `jetstream.defaultStream` for wrappers that read the stream name from configuration.
-- Wrappers that switch between core and JetStream by the presence of an option.
-- GitHub Actions annotations from `check` and `lint`.
-- Other subject-based brokers behind the same evaluator.
 
 ## Contributing
 

@@ -9,10 +9,11 @@ import { renderJson } from './render/json.js';
 import { renderMarkdown } from './render/markdown.js';
 import { renderJwtPermissions, renderNsc } from './render/nsc.js';
 import { renderServerConf } from './render/server-conf.js';
+import { checkPolicy } from './policy.js';
 import { loadStreams } from './streams.js';
 import { covers, matches } from './subjects.js';
 
-export { defineConfig, resolveConfig, loadConfig, ConfigError, type Config, type ResolvedConfig, type ShapeSpec, type ServiceSpec, type OutputFormat } from './config.js';
+export { defineConfig, resolveConfig, loadConfig, ConfigError, type Config, type ResolvedConfig, type ShapeSpec, type ServiceSpec, type PolicyRule, type OutputFormat } from './config.js';
 export type { Model, ServicePermissions, Permissions, Provenance, Diagnostic, SubjectFact, StreamDef, Location } from './model.js';
 export { hasErrors, formatLocation } from './model.js';
 export { DEFAULT_SHAPES } from './shapes.js';
@@ -59,8 +60,9 @@ export function buildModel(config: ResolvedConfig): Model {
   const streams = loadStreams(config, merged);
   const derived = derive({ config, analysis: merged, streams: streams.streams, reachability, allFiles });
   const lints = lint(config, merged, streams.streams, derived.services, derived.analyses);
+  const policy = checkPolicy(config, derived.analyses);
 
-  const all = [...diagnostics, ...streams.diagnostics, ...derived.diagnostics, ...lints].sort(compareDiagnostics);
+  const all = [...diagnostics, ...streams.diagnostics, ...derived.diagnostics, ...policy, ...lints].sort(compareDiagnostics);
   return {
     version: 1,
     generator: GENERATOR,
@@ -79,6 +81,7 @@ function mergeAnalyses(list: readonly Analysis[]): Analysis {
     overridesUsed: list.flatMap((a) => a.overridesUsed),
     unusedShapes: list.length === 0 ? [] : list[0]!.unusedShapes.filter((s) => list.every((a) => a.unusedShapes.includes(s))),
     streamAdminCalls: list.flatMap((a) => a.streamAdminCalls),
+    kvCreateCalls: list.flatMap((a) => a.kvCreateCalls),
   };
 }
 

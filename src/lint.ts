@@ -37,6 +37,11 @@ export function lint(
 
   for (const a of analyses) {
     const files = new Set(a.files);
+    for (const kv of analysis.kvCreateCalls) {
+      if (files.has(kv.location.file)) {
+        out.add({ severity: 'warning', code: 'kv-create-in-service', message: `"${a.name}" opens KV bucket "${kv.bucket}" without bindOnly, so the client creates it when missing; that needs stream administration, which services do not get — create the bucket from the admin user and pass { bindOnly: true }`, location: kv.location, service: a.name });
+      }
+    }
     for (const call of analysis.streamAdminCalls) {
       if (files.has(call.file)) {
         out.add({ severity: 'warning', code: 'stream-admin-in-service', message: `stream administration inside "${a.name}"; services receive no stream grants — provision streams from the admin user`, location: call, service: a.name });
@@ -76,6 +81,13 @@ export function lint(
         out.add({ severity, code: 'no-publisher', message: `"${subject}" is consumed but nothing in the program publishes it (declare external.publishers if another system produces it)`, location: fact.location });
       }
     }
+  }
+
+  const inboxes = new Map<string, string[]>();
+  for (const s of config.services) inboxes.set(s.inboxPrefix, [...(inboxes.get(s.inboxPrefix) ?? []), s.name]);
+  for (const [prefix, names] of inboxes) {
+    if (names.length < 2) continue;
+    out.add({ severity: 'info', code: 'shared-inbox', message: `${names.join(', ')} all subscribe to "${prefix}.>" for replies, so each can read the others' replies; set inboxPrefix to "_INBOX_\${service}" and the client's inboxPrefix option to isolate them` });
   }
 
   if (config.lint.overBroad !== 'off') {

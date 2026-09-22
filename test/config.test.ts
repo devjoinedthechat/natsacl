@@ -24,6 +24,8 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ shapes: { extend: [{ kind: 'publish' } as never] } }, { rootDir: root })).toThrow(/needs "kind" and "callee"/);
     expect(() => resolveConfig({ tsconfig: 'missing.json' }, { rootDir: root })).toThrow(/tsconfig not found/);
     expect(() => resolveConfig({ services: [{ name: 'a', entry: 'src/ingest/main.ts', nkey: 'not-a-key' }] }, { rootDir: root })).toThrow(/public user nkey/);
+    expect(() => resolveConfig({ policy: { forbid: [{ subject: 'A..B' }] } }, { rootDir: root })).toThrow(/valid NATS subject pattern/);
+    expect(() => resolveConfig({ policy: { forbid: [{ subject: 'A.>', except: ['ghost'] }] } }, { rootDir: root })).toThrow(/unknown service "ghost"/);
   });
   it('resolves paths against the config directory', () => {
     const c = resolveConfig({ streams: { file: 'streams.json' }, output: { file: 'out/auth.conf' } }, { rootDir: root });
